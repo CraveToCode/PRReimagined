@@ -52,7 +52,7 @@ def call_gemini_with_retry(
                 print(f"⚠️ Could not attach image to Gemini payload: {e}")
 
     models_to_try = [MODEL_NAME]
-    for alt in ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"]:
+    for alt in ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro"]:
         if alt not in models_to_try:
             models_to_try.append(alt)
 
