@@ -82,21 +82,63 @@ export default function App() {
     }
   }, [activeFileId]);
 
-  // Automatic Level Up based on XP
-  useEffect(() => {
-    let targetLevel = 1;
-    if (xp >= 500) targetLevel = 4;
-    else if (xp >= 300) targetLevel = 3;
-    else if (xp >= 150) targetLevel = 2;
+  const [unlockedLevel, setUnlockedLevel] = useState(() => {
+    const saved = localStorage.getItem('pr_quest_unlocked_level');
+    return saved ? parseInt(saved, 10) : 1;
+  });
 
-    if (targetLevel !== level) {
-      setLevel(targetLevel);
+  const levelMissions = {
+    1: {
+      title: "Level 1: Spec & Intent Alignment",
+      action: "Cross-check the JIRA acceptance criteria against code changes. Verify that AC items match the PR intent.",
+      tip: "Click on acceptance criteria checkboxes on the left as you verify them (+25 XP each)."
+    },
+    2: {
+      title: "Level 2: Core Architecture Audit",
+      action: "Review Tier 1: Core Logic files (SessionManager.js, ApiClient.js). Verify foundational state, token encryption, and rotation contracts.",
+      tip: "Tier 1 files are ranked with the highest importance (85–95/100). Approve or flag them to earn XP."
+    },
+    3: {
+      title: "Level 3: Blast Radius & Downstream Verification",
+      action: "Examine downstream consumers in the right-hand panel (SessionContext.jsx, ProtectedRoute.jsx). Ensure changes don't break call-sites.",
+      tip: "Click 'Inspect Changes' on referencing files to quickly inspect consumer code."
+    },
+    4: {
+      title: "Level 4: Test Suite & Final Verdict",
+      action: "Verify unit test coverage in SessionManager.test.js and submit your Final Review Verdict.",
+      tip: "Click '🏆 Final Verdict' in the header to review approval statistics and submit (+100 XP)."
+    }
+  };
+
+  useEffect(() => {
+    localStorage.setItem('pr_quest_level', level);
+  }, [level]);
+
+  useEffect(() => {
+    localStorage.setItem('pr_quest_unlocked_level', unlockedLevel);
+  }, [unlockedLevel]);
+
+  // Sequential Level Unlocking: advances 1 step at a time without jumping or overriding manual tab selection
+  useEffect(() => {
+    const allAcCompleted = jiraTicket.criteria.length > 0 && jiraTicket.criteria.every(ac => ac.completed);
+    const tier1Reviewed = files.filter(f => f.tier.includes("Tier 1")).every(f => f.status !== 'pending');
+    const allReviewed = files.every(f => f.status !== 'pending');
+
+    let maxEligible = 1;
+    if (allAcCompleted || xp >= 100) maxEligible = Math.max(maxEligible, 2);
+    if (tier1Reviewed || xp >= 220) maxEligible = Math.max(maxEligible, 3);
+    if (allReviewed || xp >= 350) maxEligible = Math.max(maxEligible, 4);
+
+    if (maxEligible > unlockedLevel) {
+      const nextLvl = unlockedLevel + 1;
+      setUnlockedLevel(nextLvl);
+      setLevel(nextLvl);
       setQuestLogs(prev => [
-        { id: Date.now(), text: `🎉 LEVEL UP! Reached Level ${targetLevel}!`, timestamp: new Date().toLocaleTimeString() },
+        { id: Date.now(), text: `🎉 LEVEL UP! Unlocked Level ${nextLvl}!`, timestamp: new Date().toLocaleTimeString() },
         ...prev
       ].slice(0, 5));
     }
-  }, [xp, level]);
+  }, [xp, jiraTicket, files, unlockedLevel]);
 
   const handleAddXp = (amount, reason) => {
     setXp(prev => prev + amount);
@@ -133,7 +175,8 @@ export default function App() {
   const handleReset = () => {
     if (window.confirm("Are you sure you want to reset your review quest progress?")) {
       setLevel(1);
-      setXp(100);
+      setUnlockedLevel(1);
+      setXp(0);
       setJiraTicket(initialJiraTicket);
       setFiles(initialFiles);
       setReferences(initialReferences);
@@ -158,6 +201,7 @@ export default function App() {
       <QuestHeader 
         level={level} 
         setLevel={setLevel} 
+        unlockedLevel={unlockedLevel}
         xp={xp} 
         totalFiles={files.length} 
         reviewedCount={reviewedCount} 
@@ -165,6 +209,31 @@ export default function App() {
         onOpenVerdict={() => setIsVerdictOpen(true)}
         onOpenArch={() => setIsArchOpen(true)}
       />
+
+      {/* Active Mission Banner */}
+      <div className="max-w-7xl w-full mx-auto px-4 lg:px-6 pt-4">
+        <div className="bg-white border-l-4 border-[#C35832] border border-[#E6E0D5] rounded-xl p-3.5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <span className="text-xl">🎯</span>
+            <div>
+              <div className="text-xs font-bold text-[#C35832] uppercase tracking-wider">
+                {levelMissions[level]?.title || `Level ${level} Mission`}
+              </div>
+              <p className="text-xs text-[#242220] font-medium mt-0.5">
+                {levelMissions[level]?.action}
+              </p>
+              <p className="text-[11px] text-[#6B635A] mt-0.5">
+                💡 <span className="font-semibold">Tip:</span> {levelMissions[level]?.tip}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-center flex-shrink-0">
+            <span className="text-[10px] bg-[#F1ECE4] text-[#6B635A] px-2 py-1 rounded font-bold">
+              Unlocked: Level {unlockedLevel}/4
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* Main Workspace */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">

@@ -4,6 +4,7 @@ import { Shield, Award, CheckCircle, RefreshCw } from 'lucide-react';
 export default function QuestHeader({ 
   level, 
   setLevel, 
+  unlockedLevel = 1,
   xp, 
   totalFiles, 
   reviewedCount, 
@@ -94,17 +95,20 @@ export default function QuestHeader({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-4 pt-4 border-t border-[#F1ECE4]">
         {levels.map((lvl) => {
           const isActive = level === lvl.num;
-          const isCompleted = level > lvl.num;
+          const isCompleted = unlockedLevel > lvl.num;
+          const isLocked = lvl.num > unlockedLevel;
           return (
             <button
               key={lvl.num}
               onClick={() => setLevel(lvl.num)}
               className={`text-left p-2.5 rounded-lg border transition-all ${
                 isActive 
-                  ? 'bg-[#FFFDF9] border-[#D08A29] shadow-sm ring-1 ring-[#D08A29]' 
+                  ? 'bg-[#FFFDF9] border-[#D08A29] shadow-sm ring-2 ring-[#D08A29]' 
                   : isCompleted
                     ? 'bg-[#F4F8F5] border-[#4F6D56]/30 text-[#4F6D56]'
-                    : 'bg-[#F9F6F0] border-[#E6E0D5] hover:bg-white'
+                    : isLocked
+                      ? 'bg-[#F9F6F0]/60 border-[#E6E0D5] opacity-80 hover:opacity-100'
+                      : 'bg-[#F9F6F0] border-[#E6E0D5] hover:bg-white'
               }`}
             >
               <div className="flex items-center justify-between">
@@ -114,6 +118,7 @@ export default function QuestHeader({
                   Level {lvl.num}
                 </span>
                 {isCompleted && <CheckCircle className="w-4 h-4 text-[#4F6D56]" />}
+                {isLocked && !isCompleted && <span className="text-[10px] text-[#6B635A] bg-[#F1ECE4] px-1.5 py-0.5 rounded font-medium">🔒 Unlocks next</span>}
               </div>
               <div className="font-semibold text-sm text-[#242220] mt-0.5 truncate">{lvl.name}</div>
               <div className="text-[11px] text-[#6B635A] truncate mt-0.5">{lvl.desc}</div>
