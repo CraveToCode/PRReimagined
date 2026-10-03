@@ -304,11 +304,14 @@ Task:
 1. Build a modern, self-contained React web application under `apps/{slug}/`.
 2. Provide all essential files:
    - `apps/{slug}/package.json` (with "dev", "build", "dist" scripts)
+   - `apps/{slug}/vite.config.js` (Vite config with @vitejs/plugin-react)
+   - `apps/{slug}/tailwind.config.js` (content glob matching index.html and src/**/*.{js,ts,jsx,tsx})
+   - `apps/{slug}/postcss.config.js` (plugins for tailwindcss and autoprefixer)
    - `apps/{slug}/index.html` (referencing /src/main.jsx)
    - `apps/{slug}/src/main.jsx` (MUST be included: mounts App to document.getElementById('root'))
    - `apps/{slug}/src/App.jsx` (MUST be included: root orchestrator component)
    - `apps/{slug}/src/components/...` (modular components for each major feature)
-   - `apps/{slug}/src/index.css` (clean, modern styling)
+   - `apps/{slug}/src/index.css` (clean, modern styling with @tailwind base, components, utilities)
    - `apps/{slug}/electron/main.js` (if desktop/electron app requested)
    - `apps/{slug}/README.md` (explaining how to run)
 3. For local storage / persistence: use browser `localStorage` or `IndexedDB`. Do NOT add any cloud backend or external database.
@@ -532,6 +535,28 @@ def main():
         target_file.parent.mkdir(parents=True, exist_ok=True)
         target_file.write_text(content, encoding="utf-8")
         print(f"  ✓ {filepath}")
+
+    # Ensure web apps have essential build configs if omitted
+    if project_kind == "web":
+        app_dirs = set()
+        for filepath in final_files.keys():
+            parts = Path(filepath).parts
+            if len(parts) >= 2 and parts[0] == "apps":
+                app_dirs.add(root / parts[0] / parts[1])
+        for a_dir in app_dirs:
+            if (a_dir / "package.json").exists():
+                tail_cfg = a_dir / "tailwind.config.js"
+                if not tail_cfg.exists():
+                    tail_cfg.write_text("/** @type {import('tailwindcss').Config} */\nexport default {\n  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],\n  theme: { extend: {} },\n  plugins: [],\n};\n", encoding="utf-8")
+                    print(f"  ✓ Auto-generated fallback: {tail_cfg.relative_to(root)}")
+                post_cfg = a_dir / "postcss.config.js"
+                if not post_cfg.exists():
+                    post_cfg.write_text("export default {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n};\n", encoding="utf-8")
+                    print(f"  ✓ Auto-generated fallback: {post_cfg.relative_to(root)}")
+                vite_cfg = a_dir / "vite.config.js"
+                if not vite_cfg.exists():
+                    vite_cfg.write_text("import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n});\n", encoding="utf-8")
+                    print(f"  ✓ Auto-generated fallback: {vite_cfg.relative_to(root)}")
 
     # Write PR summary for GitHub Action
     summary_file = root / "pr_summary.md"

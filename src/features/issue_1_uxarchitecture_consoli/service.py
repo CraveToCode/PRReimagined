@@ -47,7 +47,7 @@ class ReviewService:
         return ReviewSession(lenses=lenses, files=files, total_xp=0)
 
     def load_session(self) -> ReviewSession:
-        if not os.path.exists(self.filepath):
+        if not os.path.exists(self.filepath) or os.path.getsize(self.filepath) == 0:
             session = self.create_default_session()
             self.save_session(session)
             return session
