@@ -14,7 +14,7 @@ export default function ArchitectureModal({
 
   const handleSave = () => {
     onSave(text);
-    onAddXp(30, "Updated System Architecture Map");
+    onAddXp(30, "Updated System Architecture Map", "architecture-map-saved");
     onClose();
   };
 

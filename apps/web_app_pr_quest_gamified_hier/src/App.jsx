@@ -10,7 +10,7 @@ import SpecNav from './components/SpecNav';
 import HierarchicalDiffViewer from './components/HierarchicalDiffViewer';
 import BlastRadiusPanel from './components/BlastRadiusPanel';
 import ArchitectureModal from './components/ArchitectureModal';
-import { Award, CheckCircle, AlertTriangle, Sparkles } from 'lucide-react';
+import { Award, CheckCircle, AlertTriangle, Sparkles, ArrowRight } from 'lucide-react';
 
 export default function App() {
   const [level, setLevel] = useState(() => {
@@ -20,8 +20,17 @@ export default function App() {
 
   const [xp, setXp] = useState(() => {
     const saved = localStorage.getItem('pr_quest_xp');
-    return saved ? parseInt(saved, 10) : 100;
+    return saved ? parseInt(saved, 10) : 0;
   });
+
+  const [awardedActions, setAwardedActions] = useState(() => {
+    const saved = localStorage.getItem('pr_quest_awarded_actions');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('pr_quest_awarded_actions', JSON.stringify(awardedActions));
+  }, [awardedActions]);
 
   const [jiraTicket, setJiraTicket] = useState(() => {
     const saved = localStorage.getItem('pr_quest_jira');
@@ -118,34 +127,54 @@ export default function App() {
     localStorage.setItem('pr_quest_unlocked_level', unlockedLevel);
   }, [unlockedLevel]);
 
-  // Sequential Level Unlocking: advances 1 step at a time without jumping or overriding manual tab selection
+  // Milestone objective calculations
+  const completedAcCount = jiraTicket.criteria.filter(ac => ac.completed).length;
+  const totalAcCount = jiraTicket.criteria.length;
+  const isLevel1Complete = totalAcCount > 0 && completedAcCount === totalAcCount;
+
+  const tier1Files = files.filter(f => f.tier.includes("Tier 1"));
+  const tier1ReviewedCount = tier1Files.filter(f => f.status !== 'pending').length;
+  const isLevel2Complete = tier1Files.length > 0 && tier1ReviewedCount === tier1Files.length;
+
+  const tier2Files = files.filter(f => f.tier.includes("Tier 2"));
+  const tier2ReviewedCount = tier2Files.filter(f => f.status !== 'pending').length;
+  const isLevel3Complete = tier2Files.length > 0 && tier2ReviewedCount === tier2Files.length;
+
+  const tier3Files = files.filter(f => f.tier.includes("Tier 3"));
+  const tier3ReviewedCount = tier3Files.filter(f => f.status !== 'pending').length;
+  const isVerdictSubmitted = awardedActions.includes('final-verdict-submitted');
+  const isLevel4Complete = tier3Files.length > 0 && tier3ReviewedCount === tier3Files.length && isVerdictSubmitted;
+
+  // Sequential Level Unlocking: unlocking happens at milestone completion, but active tab/level NEVER auto-jumps abruptly
   useEffect(() => {
-    const allAcCompleted = jiraTicket.criteria.length > 0 && jiraTicket.criteria.every(ac => ac.completed);
-    const tier1Reviewed = files.filter(f => f.tier.includes("Tier 1")).every(f => f.status !== 'pending');
-    const allReviewed = files.every(f => f.status !== 'pending');
+    let eligibleUnlocked = 1;
+    if (isLevel1Complete) eligibleUnlocked = 2;
+    if (isLevel1Complete && isLevel2Complete) eligibleUnlocked = 3;
+    if (isLevel1Complete && isLevel2Complete && isLevel3Complete) eligibleUnlocked = 4;
 
-    let maxEligible = 1;
-    if (allAcCompleted || xp >= 100) maxEligible = Math.max(maxEligible, 2);
-    if (tier1Reviewed || xp >= 220) maxEligible = Math.max(maxEligible, 3);
-    if (allReviewed || xp >= 350) maxEligible = Math.max(maxEligible, 4);
-
-    if (maxEligible > unlockedLevel) {
-      const nextLvl = unlockedLevel + 1;
-      setUnlockedLevel(nextLvl);
-      setLevel(nextLvl);
+    if (eligibleUnlocked > unlockedLevel) {
+      setUnlockedLevel(eligibleUnlocked);
+      handleAddXp(50, `Unlocked Level ${eligibleUnlocked}!`, `unlock-level-${eligibleUnlocked}`);
       setQuestLogs(prev => [
-        { id: Date.now(), text: `🎉 LEVEL UP! Unlocked Level ${nextLvl}!`, timestamp: new Date().toLocaleTimeString() },
+        { id: Date.now(), text: `🎉 LEVEL UNLOCKED! Level ${eligibleUnlocked} is now available!`, timestamp: new Date().toLocaleTimeString() },
         ...prev
       ].slice(0, 5));
     }
-  }, [xp, jiraTicket, files, unlockedLevel]);
+  }, [isLevel1Complete, isLevel2Complete, isLevel3Complete, unlockedLevel]);
 
-  const handleAddXp = (amount, reason) => {
+  const handleAddXp = (amount, reason, actionId = null) => {
+    if (actionId) {
+      if (awardedActions.includes(actionId)) {
+        return false; // Prevent repeated XP farming
+      }
+      setAwardedActions(prev => [...prev, actionId]);
+    }
     setXp(prev => prev + amount);
     setQuestLogs(prev => [
-      { id: Date.now(), text: `+${amount} XP: ${reason}`, timestamp: new Date().toLocaleTimeString() },
+      { id: Date.now() + Math.random(), text: `+${amount} XP: ${reason}`, timestamp: new Date().toLocaleTimeString() },
       ...prev
     ].slice(0, 5));
+    return true;
   };
 
   const handleUpdateFileStatus = (fileId, status) => {
@@ -177,6 +206,7 @@ export default function App() {
       setLevel(1);
       setUnlockedLevel(1);
       setXp(0);
+      setAwardedActions([]);
       setJiraTicket(initialJiraTicket);
       setFiles(initialFiles);
       setReferences(initialReferences);
@@ -210,26 +240,110 @@ export default function App() {
         onOpenArch={() => setIsArchOpen(true)}
       />
 
-      {/* Active Mission Banner */}
+      {/* Active Mission & Transition Banner */}
       <div className="max-w-7xl w-full mx-auto px-4 lg:px-6 pt-4">
-        <div className="bg-white border-l-4 border-[#C35832] border border-[#E6E0D5] rounded-xl p-3.5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-2.5">
-            <span className="text-xl">🎯</span>
+        <div className="bg-white border-l-4 border-[#C35832] border border-[#E6E0D5] rounded-xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl mt-0.5">
+              {level === 1 && (isLevel1Complete ? '🌟' : '🎯')}
+              {level === 2 && (isLevel2Complete ? '🌟' : '🏛️')}
+              {level === 3 && (isLevel3Complete ? '🌟' : '💥')}
+              {level === 4 && (isLevel4Complete ? '🏆' : '🧪')}
+            </span>
             <div>
-              <div className="text-xs font-bold text-[#C35832] uppercase tracking-wider">
-                {levelMissions[level]?.title || `Level ${level} Mission`}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-[#C35832] uppercase tracking-wider">
+                  {levelMissions[level]?.title || `Level ${level} Mission`}
+                </span>
+                <span className="text-[10px] bg-[#F1ECE4] text-[#6B635A] px-2 py-0.5 rounded font-bold">
+                  Stage {level}/4
+                </span>
+                {level === 1 && isLevel1Complete && (
+                  <span className="text-[10px] bg-[#F4F8F5] text-[#4F6D56] border border-[#4F6D56]/30 px-2 py-0.5 rounded font-bold">
+                    ✓ Level 1 Complete
+                  </span>
+                )}
+                {level === 2 && isLevel2Complete && (
+                  <span className="text-[10px] bg-[#F4F8F5] text-[#4F6D56] border border-[#4F6D56]/30 px-2 py-0.5 rounded font-bold">
+                    ✓ Level 2 Complete
+                  </span>
+                )}
+                {level === 3 && isLevel3Complete && (
+                  <span className="text-[10px] bg-[#F4F8F5] text-[#4F6D56] border border-[#4F6D56]/30 px-2 py-0.5 rounded font-bold">
+                    ✓ Level 3 Complete
+                  </span>
+                )}
+                {level === 4 && isLevel4Complete && (
+                  <span className="text-[10px] bg-[#F4F8F5] text-[#4F6D56] border border-[#4F6D56]/30 px-2 py-0.5 rounded font-bold">
+                    ✓ Review Quest Completed
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-[#242220] font-medium mt-0.5">
+              <p className="text-xs text-[#242220] font-medium mt-1">
                 {levelMissions[level]?.action}
               </p>
               <p className="text-[11px] text-[#6B635A] mt-0.5">
-                💡 <span className="font-semibold">Tip:</span> {levelMissions[level]?.tip}
+                💡 <span className="font-semibold">Milestone Goal:</span> {
+                  level === 1 ? `Verify all Acceptance Criteria (${completedAcCount}/${totalAcCount} checked)` :
+                  level === 2 ? `Audit Tier 1 Core Logic files (${tier1ReviewedCount}/${tier1Files.length} reviewed)` :
+                  level === 3 ? `Verify Downstream Consumers (${tier2ReviewedCount}/${tier2Files.length} reviewed)` :
+                  `Review Tests (${tier3ReviewedCount}/${tier3Files.length}) & Submit Final Verdict`
+                }
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 self-end sm:self-center flex-shrink-0">
-            <span className="text-[10px] bg-[#F1ECE4] text-[#6B635A] px-2 py-1 rounded font-bold">
-              Unlocked: Level {unlockedLevel}/4
+
+          {/* Interactive Transition Actions */}
+          <div className="flex flex-wrap items-center gap-2.5 self-start md:self-center flex-shrink-0">
+            {/* Level 1 Complete CTA */}
+            {level === 1 && isLevel1Complete && (
+              <button
+                onClick={() => setLevel(2)}
+                className="px-3.5 py-2 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 animate-pulse"
+              >
+                <span>Proceed to Level 2: Core Architecture</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {/* Level 2 Complete CTA */}
+            {level === 2 && isLevel2Complete && (
+              <button
+                onClick={() => setLevel(3)}
+                className="px-3.5 py-2 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 animate-pulse"
+              >
+                <span>Proceed to Level 3: Blast Radius</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {/* Level 3 Complete CTA */}
+            {level === 3 && isLevel3Complete && (
+              <button
+                onClick={() => setLevel(4)}
+                className="px-3.5 py-2 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 animate-pulse"
+              >
+                <span>Proceed to Level 4: Tests & Verdict</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {/* Level 4 Submit CTA */}
+            {level === 4 && (
+              <button
+                onClick={() => setIsVerdictOpen(true)}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 ${
+                  isVerdictSubmitted
+                    ? 'bg-[#4F6D56] text-white'
+                    : 'bg-[#C35832] hover:bg-[#A84725] text-white'
+                }`}
+              >
+                <span>{isVerdictSubmitted ? '✓ Review Verdict Submitted' : '🏆 Submit Final Review Verdict'}</span>
+              </button>
+            )}
+
+            <span className="text-[10px] bg-[#F1ECE4] text-[#6B635A] px-2.5 py-1.5 rounded font-bold border border-[#E6E0D5]">
+              Max Unlocked: Level {unlockedLevel}/4
             </span>
           </div>
         </div>
@@ -370,13 +484,17 @@ export default function App() {
               </button>
               <button
                 onClick={() => {
-                  alert(`🎉 Review submitted successfully! You earned a bonus +100 XP!`);
-                  handleAddXp(100, "Submitted Final Review Verdict");
+                  const awarded = handleAddXp(100, "Submitted Final Review Verdict", "final-verdict-submitted");
+                  if (awarded) {
+                    alert(`🎉 Review submitted successfully! You earned a bonus +100 XP!`);
+                  } else {
+                    alert(`✓ Review verdict updated and recorded!`);
+                  }
                   setIsVerdictOpen(false);
                 }}
                 className="px-4 py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-sm transition-colors"
               >
-                Submit Verdict (+100 XP)
+                {awardedActions.includes("final-verdict-submitted") ? "Submit Verdict (Recorded)" : "Submit Verdict (+100 XP)"}
               </button>
             </div>
           </div>

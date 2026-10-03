@@ -18,7 +18,7 @@ export default function SpecNav({
       if (ac.id === id) {
         const nextState = !ac.completed;
         if (nextState) {
-          onAddXp(25, `Completed Spec Check: ${ac.id}`);
+          onAddXp(25, `Completed Spec Check: ${ac.id}`, `verify-ac-${ac.id}`);
         }
         return { ...ac, completed: nextState };
       }
@@ -37,7 +37,7 @@ export default function SpecNav({
     ];
     setJiraTicket({ ...jiraTicket, criteria: updatedCriteria });
     setNewAcText('');
-    onAddXp(10, `Added Custom Acceptance Criterion ${nextId}`);
+    onAddXp(10, `Added Custom Acceptance Criterion ${nextId}`, `add-custom-ac-${nextId}`);
   };
 
   const handleImportTicket = (e) => {

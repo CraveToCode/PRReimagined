@@ -100,15 +100,20 @@ export default function QuestHeader({
           return (
             <button
               key={lvl.num}
-              onClick={() => setLevel(lvl.num)}
+              onClick={() => {
+                if (!isLocked) {
+                  setLevel(lvl.num);
+                }
+              }}
+              title={isLocked ? `Complete Level ${lvl.num - 1} milestone to unlock` : `Switch to Level ${lvl.num}`}
               className={`text-left p-2.5 rounded-lg border transition-all ${
                 isActive 
-                  ? 'bg-[#FFFDF9] border-[#D08A29] shadow-sm ring-2 ring-[#D08A29]' 
+                  ? 'bg-[#FFFDF9] border-[#D08A29] shadow-sm ring-2 ring-[#D08A29] cursor-default' 
                   : isCompleted
-                    ? 'bg-[#F4F8F5] border-[#4F6D56]/30 text-[#4F6D56]'
+                    ? 'bg-[#F4F8F5] border-[#4F6D56]/30 text-[#4F6D56] hover:bg-white cursor-pointer'
                     : isLocked
-                      ? 'bg-[#F9F6F0]/60 border-[#E6E0D5] opacity-80 hover:opacity-100'
-                      : 'bg-[#F9F6F0] border-[#E6E0D5] hover:bg-white'
+                      ? 'bg-[#F9F6F0]/60 border-[#E6E0D5] opacity-60 cursor-not-allowed'
+                      : 'bg-[#F9F6F0] border-[#E6E0D5] hover:bg-white cursor-pointer'
               }`}
             >
               <div className="flex items-center justify-between">
@@ -118,7 +123,7 @@ export default function QuestHeader({
                   Level {lvl.num}
                 </span>
                 {isCompleted && <CheckCircle className="w-4 h-4 text-[#4F6D56]" />}
-                {isLocked && !isCompleted && <span className="text-[10px] text-[#6B635A] bg-[#F1ECE4] px-1.5 py-0.5 rounded font-medium">🔒 Unlocks next</span>}
+                {isLocked && <span className="text-[10px] text-[#6B635A] bg-[#F1ECE4] px-1.5 py-0.5 rounded font-medium">🔒 Locked</span>}
               </div>
               <div className="font-semibold text-sm text-[#242220] mt-0.5 truncate">{lvl.name}</div>
               <div className="text-[11px] text-[#6B635A] truncate mt-0.5">{lvl.desc}</div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, AlertTriangle, MessageSquare, Star, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { Check, AlertTriangle, MessageSquare, Star, ChevronDown, ChevronUp, Search, Info, X } from 'lucide-react';
 
 export default function HierarchicalDiffViewer({ 
   files, 
@@ -13,6 +13,7 @@ export default function HierarchicalDiffViewer({
   const [commentInputs, setCommentInputs] = useState({});
   const [expandedFiles, setExpandedFiles] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
+  const [showTierExplainer, setShowTierExplainer] = useState(false);
 
   const filteredFiles = (selectedSpec === 'ALL' 
     ? files 
@@ -23,8 +24,8 @@ export default function HierarchicalDiffViewer({
 
   const handleStatusChange = (fileId, status) => {
     onUpdateFileStatus(fileId, status);
-    const xpGained = status === 'approved' ? 40 : 20;
-    onAddXp(xpGained, `Marked file as ${status}`);
+    // Idempotent XP: only granted once per file reviewed
+    onAddXp(40, `Reviewed ${fileId}: marked as ${status}`, `review-file-${fileId}`);
   };
 
   const handleAddCommentSubmit = (fileId, lineNum) => {
@@ -43,7 +44,7 @@ export default function HierarchicalDiffViewer({
       ...commentInputs,
       [`${fileId}-${lineNum}`]: ''
     });
-    onAddXp(15, "Added inline review comment");
+    onAddXp(15, `Added inline comment on line ${lineNum + 1}`, `comment-${fileId}-${lineNum}`);
   };
 
   const toggleExpand = (fileId) => {
@@ -61,12 +62,62 @@ export default function HierarchicalDiffViewer({
           <div className="text-xs font-bold text-[#6B635A] uppercase tracking-wider">
             📁 Hierarchical Diff Workspace ({sortedFiles.length} files)
           </div>
-          <div className="text-[11px] text-[#6B635A] flex items-center gap-2">
-            <span className="inline-block w-2.5 h-2.5 bg-[#C35832] rounded-full"></span> Tier 1: Core
-            <span className="inline-block w-2.5 h-2.5 bg-[#D08A29] rounded-full"></span> Tier 2: Consumer
-            <span className="inline-block w-2.5 h-2.5 bg-[#4F6D56] rounded-full"></span> Tier 3: Support
+          <div className="text-[11px] text-[#6B635A] flex flex-wrap items-center gap-2">
+            <span className="inline-block w-2 h-2 bg-[#C35832] rounded-full"></span> Tier 1: Core
+            <span className="inline-block w-2 h-2 bg-[#D08A29] rounded-full"></span> Tier 2: Consumer
+            <span className="inline-block w-2 h-2 bg-[#4F6D56] rounded-full"></span> Tier 3: Support
+            <button
+              onClick={() => setShowTierExplainer(!showTierExplainer)}
+              className="text-[#C35832] hover:text-[#A84725] font-semibold underline ml-1 cursor-pointer flex items-center gap-0.5"
+            >
+              <Info className="w-3 h-3" /> What do Tiers mean?
+            </button>
           </div>
         </div>
+
+        {/* Tier Explainer Card */}
+        {showTierExplainer && (
+          <div className="bg-[#FFFDF9] border border-[#E6E0D5] rounded-lg p-3 text-xs space-y-2 transition-all">
+            <div className="font-bold text-[#242220] flex items-center justify-between">
+              <span>Why Hierarchical Tiers?</span>
+              <button 
+                onClick={() => setShowTierExplainer(false)}
+                className="text-[#6B635A] hover:text-[#242220] p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-[11px] text-[#6B635A] leading-relaxed">
+              In agentic PR reviews, diffs are prioritized by architectural impact rather than flat alphabetical order:
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1 text-[11px]">
+              <div className="bg-white border border-[#C35832]/20 p-2.5 rounded-lg shadow-2xs">
+                <div className="font-bold text-[#C35832] flex items-center gap-1.5 mb-1">
+                  <span className="w-2 h-2 rounded-full bg-[#C35832]"></span> Tier 1: Core Logic
+                </div>
+                <p className="text-[#6B635A] leading-relaxed">
+                  Foundational state, security, token rotation, and network wrappers (SessionManager.js, ApiClient.js). High risk; errors break all downstream services.
+                </p>
+              </div>
+              <div className="bg-white border border-[#D08A29]/20 p-2.5 rounded-lg shadow-2xs">
+                <div className="font-bold text-[#D08A29] flex items-center gap-1.5 mb-1">
+                  <span className="w-2 h-2 rounded-full bg-[#D08A29]"></span> Tier 2: Consumer
+                </div>
+                <p className="text-[#6B635A] leading-relaxed">
+                  Context providers, hooks, and views (SessionContext.jsx, ProtectedRoute.jsx). Verifies that API contracts and state subscriptions remain unbroken.
+                </p>
+              </div>
+              <div className="bg-white border border-[#4F6D56]/20 p-2.5 rounded-lg shadow-2xs">
+                <div className="font-bold text-[#4F6D56] flex items-center gap-1.5 mb-1">
+                  <span className="w-2 h-2 rounded-full bg-[#4F6D56]"></span> Tier 3: Support
+                </div>
+                <p className="text-[#6B635A] leading-relaxed">
+                  Unit tests and mock configurations (SessionManager.test.js). Verifies edge case coverage, test assertions, and regression safety.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Search Input */}
         <div className="relative">
