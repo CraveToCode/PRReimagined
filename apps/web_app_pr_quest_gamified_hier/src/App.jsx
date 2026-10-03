@@ -3,12 +3,18 @@ import {
   initialJiraTicket,
   initialFiles,
   initialReferences,
-  defaultArchitecture
+  defaultArchitecture,
+  initialArchitectureMermaid,
+  architectureStandards as initialStandards,
+  symbolCatalog as initialSymbolCatalog,
+  initialTestSuites
 } from './mockData';
 import QuestHeader from './components/QuestHeader';
-import SpecNav from './components/SpecNav';
+import DynamicLeftPanel from './components/DynamicLeftPanel';
 import HierarchicalDiffViewer from './components/HierarchicalDiffViewer';
 import BlastRadiusPanel from './components/BlastRadiusPanel';
+import FunctionInspectorPanel from './components/FunctionInspectorPanel';
+import TestReviewWorkspace from './components/TestReviewWorkspace';
 import ArchitectureModal from './components/ArchitectureModal';
 import { Award, CheckCircle, AlertTriangle, Sparkles, ArrowRight } from 'lucide-react';
 
@@ -51,6 +57,26 @@ export default function App() {
     const saved = localStorage.getItem('pr_quest_architecture');
     return saved ? saved : defaultArchitecture;
   });
+
+  const [standards, setStandards] = useState(() => {
+    const saved = localStorage.getItem('pr_quest_standards');
+    return saved ? JSON.parse(saved) : initialStandards;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('pr_quest_standards', JSON.stringify(standards));
+  }, [standards]);
+
+  const [activeSymbolKey, setActiveSymbolKey] = useState("rotateSessionToken");
+
+  const [testSuites, setTestSuites] = useState(() => {
+    const saved = localStorage.getItem('pr_quest_tests');
+    return saved ? JSON.parse(saved) : initialTestSuites;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('pr_quest_tests', JSON.stringify(testSuites));
+  }, [testSuites]);
 
   const [selectedSpec, setSelectedSpec] = useState('ALL');
   const [activeFileId, setActiveFileId] = useState(() => {
@@ -201,6 +227,19 @@ export default function App() {
     }
   };
 
+  const handleToggleStandard = (id) => {
+    setStandards(prev => prev.map(s => {
+      if (s.id === id) {
+        const nextVal = !s.completed;
+        if (nextVal) {
+          handleAddXp(25, `Verified Architecture Standard: ${s.id}`, `verify-std-${s.id}`);
+        }
+        return { ...s, completed: nextVal };
+      }
+      return s;
+    }));
+  };
+
   const handleReset = () => {
     if (window.confirm("Are you sure you want to reset your review quest progress?")) {
       setLevel(1);
@@ -211,6 +250,9 @@ export default function App() {
       setFiles(initialFiles);
       setReferences(initialReferences);
       setArchitectureText(defaultArchitecture);
+      setStandards(initialStandards);
+      setTestSuites(initialTestSuites);
+      setActiveSymbolKey("rotateSessionToken");
       setSelectedSpec('ALL');
       setActiveFileId(initialFiles[0]?.id || null);
       setQuestLogs([]);
@@ -349,16 +391,31 @@ export default function App() {
         </div>
       </div>
 
-      {/* Main Workspace */}
+      {/* Main Workspace: Dynamically adapts per level */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Panel: Mission Control & Spec Navigator */}
+        {/* Left Panel: Level-specific Objective Control */}
         <section className="lg:col-span-3 flex flex-col gap-4">
-          <SpecNav 
+          <DynamicLeftPanel 
+            level={level}
             jiraTicket={jiraTicket} 
             setJiraTicket={setJiraTicket} 
             selectedSpec={selectedSpec} 
             setSelectedSpec={setSelectedSpec} 
+            architectureStandards={standards}
+            onToggleStandard={handleToggleStandard}
+            mermaidCode={initialArchitectureMermaid}
+            symbolCatalog={initialSymbolCatalog}
+            activeSymbol={activeSymbolKey}
+            onSelectSymbol={setActiveSymbolKey}
+            onSelectFileByPath={handleSelectFileByPath}
             onAddXp={handleAddXp}
+            onOpenArchModal={() => setIsArchOpen(true)}
+            isLevelComplete={
+              level === 1 ? isLevel1Complete :
+              level === 2 ? isLevel2Complete :
+              level === 3 ? isLevel3Complete :
+              isLevel4Complete
+            }
           />
 
           {/* Quest Log / XP Feed */}
@@ -381,27 +438,68 @@ export default function App() {
           </div>
         </section>
 
-        {/* Center Panel: Hierarchical Diff Workspace */}
-        <section className="lg:col-span-6">
-          <HierarchicalDiffViewer 
-            files={files} 
-            selectedSpec={selectedSpec} 
-            activeFileId={activeFileId} 
-            setActiveFileId={setActiveFileId} 
-            onUpdateFileStatus={handleUpdateFileStatus} 
-            onAddComment={handleAddComment} 
-            onAddXp={handleAddXp}
-          />
-        </section>
+        {/* Level 4 Specialized Workspace: Top Test Matrix + Side-by-Side Verification */}
+        {level === 4 ? (
+          <section className="lg:col-span-9">
+            <TestReviewWorkspace 
+              testSuites={testSuites}
+              onOpenVerdict={() => setIsVerdictOpen(true)}
+              isVerdictSubmitted={isVerdictSubmitted}
+              onAddXp={handleAddXp}
+            />
+          </section>
+        ) : level === 3 ? (
+          /* Level 3 Blast Radius Workspace: Diff Center + Floating Sticky Function Inspector Right */
+          <>
+            <section className="lg:col-span-5">
+              <HierarchicalDiffViewer 
+                files={files} 
+                selectedSpec={selectedSpec} 
+                activeFileId={activeFileId} 
+                setActiveFileId={setActiveFileId} 
+                onUpdateFileStatus={handleUpdateFileStatus} 
+                onAddComment={handleAddComment} 
+                onAddXp={handleAddXp}
+                level={level}
+                onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
+              />
+            </section>
 
-        {/* Right Panel: Blast Radius & Reference Graph */}
-        <section className="lg:col-span-3">
-          <BlastRadiusPanel 
-            activeFile={activeFile} 
-            references={references} 
-            onSelectFileByPath={handleSelectFileByPath} 
-          />
-        </section>
+            <section className="lg:col-span-4">
+              <FunctionInspectorPanel 
+                activeSymbolKey={activeSymbolKey}
+                symbolCatalog={initialSymbolCatalog}
+                onSelectSymbol={setActiveSymbolKey}
+                onSelectFileByPath={handleSelectFileByPath}
+              />
+            </section>
+          </>
+        ) : (
+          /* Level 1 & 2 Standard Workspace: Center Diff Viewer + Right Blast Radius Panel */
+          <>
+            <section className="lg:col-span-6">
+              <HierarchicalDiffViewer 
+                files={files} 
+                selectedSpec={selectedSpec} 
+                activeFileId={activeFileId} 
+                setActiveFileId={setActiveFileId} 
+                onUpdateFileStatus={handleUpdateFileStatus} 
+                onAddComment={handleAddComment} 
+                onAddXp={handleAddXp}
+                level={level}
+                onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
+              />
+            </section>
+
+            <section className="lg:col-span-3">
+              <BlastRadiusPanel 
+                activeFile={activeFile} 
+                references={references} 
+                onSelectFileByPath={handleSelectFileByPath} 
+              />
+            </section>
+          </>
+        )}
       </main>
 
       {/* Architecture Modal */}

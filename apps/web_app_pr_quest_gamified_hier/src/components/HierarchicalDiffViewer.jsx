@@ -8,12 +8,22 @@ export default function HierarchicalDiffViewer({
   setActiveFileId, 
   onUpdateFileStatus, 
   onAddComment,
-  onAddXp 
+  onAddXp,
+  level = 1,
+  onInspectSymbol
 }) {
   const [commentInputs, setCommentInputs] = useState({});
   const [expandedFiles, setExpandedFiles] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [showTierExplainer, setShowTierExplainer] = useState(false);
+
+  const detectSymbol = (content) => {
+    if (content.includes("rotateSessionToken")) return "rotateSessionToken";
+    if (content.includes("interceptors.response.use") || (content.includes("response.use") && content.includes("apiClient"))) return "apiClient.interceptors.response.use";
+    if (content.includes("SessionProvider")) return "SessionProvider";
+    if (content.includes("ProtectedRoute")) return "ProtectedRoute";
+    return null;
+  };
 
   const filteredFiles = (selectedSpec === 'ALL' 
     ? files 
@@ -252,6 +262,18 @@ export default function HierarchicalDiffViewer({
                                 <pre className="flex-1 whitespace-pre-wrap break-all text-[#242220]">
                                   {line.content}
                                 </pre>
+                                {detectSymbol(line.content) && onInspectSymbol && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onInspectSymbol(detectSymbol(line.content));
+                                    }}
+                                    className="ml-2 px-1.5 py-0.5 rounded bg-[#FFFDF9] border border-[#C35832] text-[#C35832] text-[9px] font-bold font-mono hover:bg-[#C35832] hover:text-white transition-colors cursor-pointer flex items-center gap-1 shadow-2xs flex-shrink-0"
+                                    title={`Inspect ${detectSymbol(line.content)} in Blast Radius Panel`}
+                                  >
+                                    🔍 {detectSymbol(line.content).split('.').pop()}()
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => {
                                     setCommentInputs(prev => ({

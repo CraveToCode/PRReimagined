@@ -199,3 +199,355 @@ This system implements a secure, client-side token rotation mechanism to prevent
 3. **SessionContext (State)**: React Context that wraps the application, providing user state and triggering periodic background rotation (every 14 minutes).
 4. **ProtectedRoute (UI Guard)**: Restricts access to authenticated routes based on the SessionContext state.
 `;
+
+export const initialArchitectureMermaid = `graph TD
+  SM["SessionManager (Tier 1 Core)<br/>Token Storage & Crypto Rotation"] -->|POST /api/auth/rotate| API_SRV["Auth Server"]
+  API["ApiClient (Tier 1 Core)<br/>Axios 401 Error Interceptor"] -->|Invokes rotateSessionToken()| SM
+  API -->|Retries with Bearer JWT| REST["Protected REST APIs"]
+  SC["SessionProvider (Tier 2 Consumer)<br/>React Context & Idle Polling"] -->|Periodic 14-min refresh| SM
+  PR["ProtectedRoute (Tier 2 Consumer)<br/>UI Route Navigation Guard"] -->|Subscribes to { user }| SC
+  TEST["SessionManager.test.js (Tier 3)<br/>Unit Tests & Assertions"] -->|Verifies Token Rotation| SM
+
+  classDef core fill:#FBEFEF,stroke:#C35832,stroke-width:2px,color:#242220;
+  classDef consumer fill:#FFFDF9,stroke:#D08A29,stroke-width:2px,color:#242220;
+  classDef support fill:#F4F8F5,stroke:#4F6D56,stroke-width:2px,color:#242220;
+  class SM,API core;
+  class SC,PR consumer;
+  class TEST support;`;
+
+export const architectureStandards = [
+  {
+    id: "STD-SEC-01",
+    standardFile: "docs/standards/token-security.md",
+    category: "Security & Storage",
+    title: "Secure Storage Fallback Isolation",
+    description: "Verify that localStorage is guarded and token access is abstracted inside SessionManager without leaking raw keys to window.",
+    completed: false
+  },
+  {
+    id: "STD-NET-02",
+    standardFile: "docs/standards/api-resilience.md",
+    category: "Network Resilience",
+    title: "Infinite 401 Loop Prevention",
+    description: "Verify that ApiClient sets an idempotent _retry guard flag on failed requests before attempting token rotation.",
+    completed: false
+  },
+  {
+    id: "STD-ISO-03",
+    standardFile: "docs/standards/context-lifecycle.md",
+    category: "Architecture Boundaries",
+    title: "Context-to-Core Unidirectional Data Flow",
+    description: "Ensure SessionContext subscribes to SessionManager state rather than duplicating token logic or mutating storage directly.",
+    completed: false
+  },
+  {
+    id: "STD-ERR-04",
+    standardFile: "docs/standards/error-recovery.md",
+    category: "Error Recovery",
+    title: "Graceful Refresh Rejection & Redirection",
+    description: "Confirm that unrecoverable refresh failures trigger user logout and redirection to /login instead of unhandled promise rejections.",
+    completed: false
+  }
+];
+
+export const symbolCatalog = {
+  "rotateSessionToken": {
+    name: "rotateSessionToken",
+    signature: "async rotateSessionToken()",
+    type: "Method",
+    file: "src/services/SessionManager.js",
+    tier: "Tier 1: Core Logic",
+    isModified: true,
+    modifiedCode: `async rotateSessionToken() {
+  if (!this.refreshToken) throw new Error('No refresh token available');
+  const response = await fetch('/api/auth/rotate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: this.refreshToken })
+  });
+  const data = await response.json();
+  this.token = data.accessToken;
+  this.refreshToken = data.refreshToken;
+  localStorage.setItem('session_token', this.token);
+  localStorage.setItem('refresh_token', this.refreshToken);
+  return this.token;
+}`,
+    originalCode: `// Original codebase implementation (Before PR)
+async rotateSessionToken() {
+  // Legacy: Did not support refresh token rotation
+  throw new Error('rotateSessionToken not implemented in legacy SessionManager');
+}`,
+    matches: [
+      {
+        id: "match-1",
+        label: "Definition: SessionManager.js:36",
+        role: "Primary Definition (Modified)",
+        file: "src/services/SessionManager.js",
+        line: 36,
+        isDefinition: true
+      },
+      {
+        id: "match-2",
+        label: "Call-Site: ApiClient.js:74",
+        role: "Consumer in Interceptor (Modified)",
+        file: "src/api/ApiClient.js",
+        line: 74,
+        isDefinition: false
+      },
+      {
+        id: "match-3",
+        label: "Call-Site: SessionContext.jsx:108",
+        role: "Consumer in React Interval (New)",
+        file: "src/context/SessionContext.jsx",
+        line: 108,
+        isDefinition: false
+      }
+    ],
+    callers: [
+      { file: "src/api/ApiClient.js", line: 74, context: "const newToken = await sessionManager.rotateSessionToken();" },
+      { file: "src/context/SessionContext.jsx", line: 108, context: "sessionManager.rotateSessionToken().catch(() => setUser(null));" },
+      { file: "src/tests/SessionManager.test.js", line: 163, context: "const token = await manager.rotateSessionToken();" }
+    ]
+  },
+  "apiClient.interceptors.response.use": {
+    name: "response.use",
+    signature: "apiClient.interceptors.response.use(onSuccess, onError)",
+    type: "Interceptor",
+    file: "src/api/ApiClient.js",
+    tier: "Tier 1: Core Logic",
+    isModified: true,
+    modifiedCode: `apiClient.interceptors.response.use(
+  response => response,
+  async error => {
+    const originalRequest = error.config;
+    if (error.response.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        const newToken = await sessionManager.rotateSessionToken();
+        originalRequest.headers['Authorization'] = \`Bearer \${newToken}\`;
+        return apiClient(originalRequest);
+      } catch (refreshError) {
+        window.location.href = '/login';
+        return Promise.reject(refreshError);
+      }
+    }
+    return Promise.reject(error);
+  }
+);`,
+    originalCode: `apiClient.interceptors.response.use(
+  response => response,
+  error => Promise.reject(error)
+);`,
+    matches: [
+      {
+        id: "match-api-1",
+        label: "Definition: ApiClient.js:66",
+        role: "Axios Response Interceptor (Modified)",
+        file: "src/api/ApiClient.js",
+        line: 66,
+        isDefinition: true
+      }
+    ],
+    callers: [
+      { file: "src/context/SessionContext.jsx", line: 12, context: "All API consumer calls pass through this interceptor" }
+    ]
+  },
+  "SessionProvider": {
+    name: "SessionProvider",
+    signature: "export const SessionProvider = ({ children }) => { ... }",
+    type: "React Component",
+    file: "src/context/SessionContext.jsx",
+    tier: "Tier 2: Consumer",
+    isModified: true,
+    modifiedCode: `export const SessionProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      sessionManager.rotateSessionToken().catch(() => setUser(null));
+    }, 14 * 60 * 1000); // 14 minutes
+    return () => clearInterval(interval);
+  }, []);
+  return (
+    <SessionContext.Provider value={{ user, sessionManager }}>
+      {children}
+    </SessionContext.Provider>
+  );
+};`,
+    originalCode: `// Original codebase: SessionProvider did not exist (new module in this PR)`,
+    matches: [
+      {
+        id: "match-sp-1",
+        label: "Definition: SessionContext.jsx:104",
+        role: "Context Provider (New)",
+        file: "src/context/SessionContext.jsx",
+        line: 104,
+        isDefinition: true
+      },
+      {
+        id: "match-sp-2",
+        label: "Usage in ProtectedRoute.jsx:136",
+        role: "Consumer Hook (useContext)",
+        file: "src/components/ProtectedRoute.jsx",
+        line: 136,
+        isDefinition: false
+      }
+    ],
+    callers: [
+      { file: "src/components/ProtectedRoute.jsx", line: 136, context: "const { user } = useContext(SessionContext);" }
+    ]
+  },
+  "ProtectedRoute": {
+    name: "ProtectedRoute",
+    signature: "export const ProtectedRoute = ({ children }) => { ... }",
+    type: "React Component",
+    file: "src/components/ProtectedRoute.jsx",
+    tier: "Tier 2: Consumer",
+    isModified: true,
+    modifiedCode: `export const ProtectedRoute = ({ children }) => {
+  const { user } = useContext(SessionContext);
+  const isAuthenticated = !!user;
+  return isAuthenticated ? children : <Navigate to='/login' />;
+};`,
+    originalCode: `export const ProtectedRoute = ({ children }) => {
+  const isAuthenticated = !!localStorage.getItem('token');
+  return isAuthenticated ? children : <Navigate to='/login' />;
+};`,
+    matches: [
+      {
+        id: "match-pr-1",
+        label: "Definition: ProtectedRoute.jsx:134",
+        role: "Route Guard (Modified)",
+        file: "src/components/ProtectedRoute.jsx",
+        line: 134,
+        isDefinition: true
+      }
+    ],
+    callers: [
+      { file: "src/App.jsx", line: 200, context: "Wrapped around authenticated router branches" }
+    ]
+  }
+};
+
+export const initialTestSuites = [
+  {
+    id: "test-1",
+    suiteName: "SessionManager Token Rotation",
+    testName: "should successfully rotate token and store in localStorage",
+    file: "src/tests/SessionManager.test.js",
+    targetSymbol: "rotateSessionToken",
+    targetFile: "src/services/SessionManager.js",
+    targetLines: "36-49",
+    status: "pass",
+    executionMs: 14,
+    assertionsCount: 2,
+    code: `it('should successfully rotate token and store in localStorage', async () => {
+  const manager = new SessionManager();
+  global.fetch = jest.fn().mockImplementation(() =>
+    Promise.resolve({
+      json: () => ({ accessToken: 'new_at', refreshToken: 'new_rt' })
+    })
+  );
+  const token = await manager.rotateSessionToken();
+  expect(token).toBe('new_at');
+  expect(localStorage.getItem('session_token')).toBe('new_at');
+});`,
+    testedFunctionCode: `// Target Function: SessionManager.rotateSessionToken()
+async rotateSessionToken() {
+  if (!this.refreshToken) throw new Error('No refresh token available');
+  const response = await fetch('/api/auth/rotate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: this.refreshToken })
+  });
+  const data = await response.json();
+  this.token = data.accessToken;
+  this.refreshToken = data.refreshToken;
+  localStorage.setItem('session_token', this.token);
+  localStorage.setItem('refresh_token', this.refreshToken);
+  return this.token;
+}`,
+    notes: "Verified: Assertions match the updated storage keys ('session_token'). Mocked fetch resolves valid payload."
+  },
+  {
+    id: "test-2",
+    suiteName: "ApiClient Interceptor",
+    testName: "should retry original request with new token on 401 response",
+    file: "src/tests/ApiClient.test.js",
+    targetSymbol: "apiClient.interceptors.response.use",
+    targetFile: "src/api/ApiClient.js",
+    targetLines: "66-84",
+    status: "pass",
+    executionMs: 22,
+    assertionsCount: 3,
+    code: `it('should retry original request with new token on 401 response', async () => {
+  const mockError = { response: { status: 401 }, config: { headers: {} } };
+  jest.spyOn(sessionManager, 'rotateSessionToken').mockResolvedValue('fresh_token_123');
+  
+  const result = await onResponseError(mockError);
+  expect(mockError.config._retry).toBe(true);
+  expect(mockError.config.headers['Authorization']).toBe('Bearer fresh_token_123');
+});`,
+    testedFunctionCode: `// Target Function: ApiClient 401 Interceptor
+async error => {
+  const originalRequest = error.config;
+  if (error.response.status === 401 && !originalRequest._retry) {
+    originalRequest._retry = true;
+    try {
+      const newToken = await sessionManager.rotateSessionToken();
+      originalRequest.headers['Authorization'] = \`Bearer \${newToken}\`;
+      return apiClient(originalRequest);
+    } catch (refreshError) {
+      window.location.href = '/login';
+      return Promise.reject(refreshError);
+    }
+  }
+  return Promise.reject(error);
+}`,
+    notes: "Verified: Guard flag _retry is properly asserted to prevent infinite recursive loop."
+  },
+  {
+    id: "test-3",
+    suiteName: "SessionManager Error Handling",
+    testName: "should throw descriptive error when refresh token is missing",
+    file: "src/tests/SessionManager.test.js",
+    targetSymbol: "rotateSessionToken",
+    targetFile: "src/services/SessionManager.js",
+    targetLines: "37",
+    status: "warning",
+    executionMs: 0,
+    assertionsCount: 0,
+    code: `// ⚠️ POTENTIAL GAP IDENTIFIED BY AGENTIC REVIEWER:
+// PR currently lacks negative unit test for empty refresh token:
+it.todo('should throw Error("No refresh token available") if refreshToken is empty');`,
+    testedFunctionCode: `// Line 37 in SessionManager.js:
+if (!this.refreshToken) throw new Error('No refresh token available');`,
+    notes: "Reviewer Flag: Missing unit test covering line 37 edge case. Recommended to add before approving."
+  },
+  {
+    id: "test-4",
+    suiteName: "SessionContext Lifecycle",
+    testName: "should clear rotation interval timer on unmount",
+    file: "src/tests/SessionContext.test.js",
+    targetSymbol: "SessionProvider",
+    targetFile: "src/context/SessionContext.jsx",
+    targetLines: "106-111",
+    status: "pass",
+    executionMs: 18,
+    assertionsCount: 1,
+    code: `it('should clear rotation interval timer on unmount', () => {
+  jest.useFakeTimers();
+  const clearIntervalSpy = jest.spyOn(window, 'clearInterval');
+  const { unmount } = render(<SessionProvider><div>App</div></SessionProvider>);
+  unmount();
+  expect(clearIntervalSpy).toHaveBeenCalled();
+});`,
+    testedFunctionCode: `// Target Function: SessionContext useEffect cleanup
+useEffect(() => {
+  const interval = setInterval(() => {
+    sessionManager.rotateSessionToken().catch(() => setUser(null));
+  }, 14 * 60 * 1000); // 14 minutes
+  return () => clearInterval(interval);
+}, []);`,
+    notes: "Verified: Memory leak prevention is properly tested."
+  }
+];
