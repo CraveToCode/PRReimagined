@@ -1,8 +1,39 @@
 /**
- * GitHub public API helpers for fetching open PRs and PR file diffs.
+ * GitHub public API helpers for fetching open PRs, PR file diffs,
+ * and PR-head repository context docs (ARCHITECTURE / CONTEXT / PRODUCT).
  */
 
 const GITHUB_API = 'https://api.github.com';
+const MAX_CRITERIA = 8;
+const MAX_STANDARDS = 8;
+
+/** Candidate paths per logical role, ordered by preference. */
+const DOC_CANDIDATES = {
+  architecture: [
+    'ARCHITECTURE.md',
+    'architecture.md',
+    'Architecture.md',
+    'docs/ARCHITECTURE.md',
+    'docs/architecture.md',
+    'docs/Architecture.md'
+  ],
+  context: [
+    'CONTEXT.md',
+    'context.md',
+    'Context.md',
+    'docs/CONTEXT.md',
+    'docs/context.md',
+    'docs/Context.md'
+  ],
+  product: [
+    'PRODUCT.md',
+    'product.md',
+    'Product.md',
+    'docs/PRODUCT.md',
+    'docs/product.md',
+    'docs/Product.md'
+  ]
+};
 
 /**
  * Parse owner/repo from common GitHub URL shapes or "owner/repo".
@@ -58,6 +89,22 @@ async function githubFetch(path) {
     const err = new Error(message);
     err.status = res.status;
     err.rateLimitRemaining = remaining;
+    throw err;
+  }
+  return res.json();
+}
+
+async function githubFetchOptional(path) {
+  const res = await fetch(`${GITHUB_API}${path}`, { headers: githubHeaders() });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    let message = `GitHub API error (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body?.message) message = body.message;
+    } catch (_) {}
+    const err = new Error(message);
+    err.status = res.status;
     throw err;
   }
   return res.json();
@@ -166,14 +213,293 @@ function inferImportance(filename, additions = 0, deletions = 0) {
   return Math.max(20, Math.min(98, score));
 }
 
+function decodeContentFile(fileJson) {
+  if (!fileJson || fileJson.type !== 'file' || !fileJson.content) return null;
+  try {
+    const raw = Buffer.from(fileJson.content.replace(/\n/g, ''), 'base64').toString('utf8');
+    return raw;
+  } catch (_) {
+    return null;
+  }
+}
+
 /**
- * Fetch PR metadata + changed files with parsed diffs for the review workspace.
+ * Fetch first existing candidate for a role at a given commit SHA.
+ */
+async function fetchDocForRole(owner, repo, role, candidates, refSha, changedPathSet) {
+  for (const path of candidates) {
+    const data = await githubFetchOptional(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(refSha)}`
+    );
+    if (!data) continue;
+    const content = decodeContentFile(data);
+    if (!content || !content.trim()) continue;
+    return {
+      role,
+      path: data.path || path,
+      content: content.trim(),
+      changedInPr: changedPathSet.has((data.path || path).toLowerCase())
+    };
+  }
+  return null;
+}
+
+/**
+ * Discover ARCHITECTURE / CONTEXT / PRODUCT docs at PR head.
+ * README.md is used only as a secondary architecture fallback.
+ */
+export async function fetchRepoDocsAtHead(owner, repo, headSha, changedFiles = []) {
+  const changedPathSet = new Set(
+    (changedFiles || []).map((f) => String(f.filename || f.path || '').toLowerCase()).filter(Boolean)
+  );
+
+  const roles = ['architecture', 'context', 'product'];
+  const results = await Promise.all(
+    roles.map((role) => fetchDocForRole(owner, repo, role, DOC_CANDIDATES[role], headSha, changedPathSet))
+  );
+
+  const repoDocs = results.filter(Boolean);
+
+  // Secondary: README as architecture if none found
+  if (!repoDocs.some((d) => d.role === 'architecture')) {
+    const readme = await fetchDocForRole(
+      owner,
+      repo,
+      'architecture',
+      ['README.md', 'readme.md', 'docs/README.md'],
+      headSha,
+      changedPathSet
+    );
+    if (readme) {
+      repoDocs.unshift({ ...readme, role: 'architecture', path: readme.path });
+    }
+  }
+
+  return repoDocs;
+}
+
+function stripMdNoise(text) {
+  return text
+    .replace(/^[-*+]\s+(\[[ xX]\]\s*)?/, '')
+    .replace(/^\d+[\.\)]\s+/, '')
+    .replace(/\*\*/g, '')
+    .replace(/`/g, '')
+    .trim();
+}
+
+function isUsefulBullet(text) {
+  if (!text) return false;
+  if (text.length < 12 || text.length > 220) return false;
+  if (/^https?:\/\//i.test(text)) return false;
+  if (/^#{1,6}\s/.test(text)) return false;
+  return true;
+}
+
+/**
+ * Extract checklist / bullet / numbered items from markdown.
+ * When sectionHints provided, prefer lines under matching headings.
+ */
+export function extractMarkdownItems(markdown, { sectionHints = [], limit = MAX_CRITERIA } = {}) {
+  if (!markdown || typeof markdown !== 'string') return [];
+
+  const lines = markdown.split('\n');
+  const items = [];
+  let inPreferredSection = sectionHints.length === 0;
+  const hintRe = sectionHints.length
+    ? new RegExp(sectionHints.map((h) => h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i')
+    : null;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (/^#{1,6}\s+/.test(line)) {
+      if (hintRe) {
+        inPreferredSection = hintRe.test(line);
+      }
+      continue;
+    }
+    if (!inPreferredSection && hintRe) continue;
+
+    const isChecklist = /^[-*+]\s+\[[ xX]\]\s+/.test(line);
+    const isBullet = /^[-*+]\s+/.test(line);
+    const isNumbered = /^\d+[\.\)]\s+/.test(line);
+    if (!isChecklist && !isBullet && !isNumbered) continue;
+
+    const text = stripMdNoise(line);
+    if (!isUsefulBullet(text)) continue;
+    if (items.some((i) => i.text.toLowerCase() === text.toLowerCase())) continue;
+
+    items.push({
+      text,
+      completed: isChecklist ? /\[[xX]\]/.test(line) : false
+    });
+    if (items.length >= limit) break;
+  }
+
+  // If section filtering yielded nothing, retry without section filter
+  if (items.length === 0 && sectionHints.length > 0) {
+    return extractMarkdownItems(markdown, { sectionHints: [], limit });
+  }
+
+  return items;
+}
+
+export function buildCriteriaFromDocs(prTitle, bodyPreview, repoDocs) {
+  const fromBody = bodyPreview
+    ? bodyPreview
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => /^[-*]\s+\[[ xX]\]/.test(l) || /^[-*]\s+/.test(l))
+        .slice(0, MAX_CRITERIA)
+        .map((l, i) => ({
+          id: `AC-${i + 1}`,
+          text: stripMdNoise(l),
+          completed: /\[[xX]\]/.test(l)
+        }))
+        .filter((c) => isUsefulBullet(c.text))
+    : [];
+
+  if (fromBody.length > 0) return fromBody;
+
+  const byRole = Object.fromEntries(repoDocs.map((d) => [d.role, d]));
+  const productItems = byRole.product
+    ? extractMarkdownItems(byRole.product.content, {
+        sectionHints: ['goal', 'requirement', 'acceptance', 'criteria', 'feature', 'scope', 'product'],
+        limit: MAX_CRITERIA
+      })
+    : [];
+  const contextItems = byRole.context
+    ? extractMarkdownItems(byRole.context.content, {
+        sectionHints: ['goal', 'requirement', 'acceptance', 'criteria', 'intent', 'context', 'overview'],
+        limit: MAX_CRITERIA
+      })
+    : [];
+
+  const merged = [...productItems];
+  for (const item of contextItems) {
+    if (merged.length >= MAX_CRITERIA) break;
+    if (!merged.some((m) => m.text.toLowerCase() === item.text.toLowerCase())) {
+      merged.push(item);
+    }
+  }
+
+  if (merged.length > 0) {
+    return merged.slice(0, MAX_CRITERIA).map((item, i) => ({
+      id: `AC-${i + 1}`,
+      text: item.text,
+      completed: Boolean(item.completed)
+    }));
+  }
+
+  return [
+    { id: 'AC-1', text: `Review intent: ${prTitle}`, completed: false },
+    { id: 'AC-2', text: 'Validate changed files for correctness and regressions', completed: false },
+    { id: 'AC-3', text: 'Confirm tests / coverage for the touched paths', completed: false }
+  ];
+}
+
+export function buildStandardsFromDocs(repoDocs) {
+  const byRole = Object.fromEntries(repoDocs.map((d) => [d.role, d]));
+  const arch = byRole.architecture;
+  const context = byRole.context;
+
+  let source = arch;
+  let items = arch
+    ? extractMarkdownItems(arch.content, {
+        sectionHints: ['rule', 'agent', 'guideline', 'standard', 'contract', 'must', 'never', 'placement', 'architecture'],
+        limit: MAX_STANDARDS
+      })
+    : [];
+
+  if (items.length === 0 && context) {
+    source = context;
+    items = extractMarkdownItems(context.content, {
+      sectionHints: ['rule', 'agent', 'guideline', 'standard', 'architecture'],
+      limit: MAX_STANDARDS
+    });
+  }
+
+  if (items.length > 0) {
+    return items.map((item, i) => {
+      const title = item.text.length > 72 ? `${item.text.slice(0, 69)}…` : item.text;
+      return {
+        id: `DOC-STD-${String(i + 1).padStart(2, '0')}`,
+        standardFile: source?.path || 'ARCHITECTURE.md',
+        category: arch ? 'Architecture Doc' : 'Context Doc',
+        title,
+        description: item.text,
+        completed: false
+      };
+    });
+  }
+
+  if (arch || context || byRole.product) {
+    const docPath = arch?.path || context?.path || byRole.product?.path || 'repo docs';
+    return [
+      {
+        id: 'DOC-STD-01',
+        standardFile: docPath,
+        category: 'Architecture Doc',
+        title: 'Changes respect documented architecture boundaries',
+        description: `Review Tier 1 diffs against guidance in ${docPath}.`,
+        completed: false
+      },
+      {
+        id: 'DOC-STD-02',
+        standardFile: docPath,
+        category: 'Architecture Doc',
+        title: 'No undocumented cross-layer coupling introduced',
+        description: 'Flag new imports/calls that violate stated module boundaries or placement rules.',
+        completed: false
+      },
+      {
+        id: 'DOC-STD-03',
+        standardFile: docPath,
+        category: 'Architecture Doc',
+        title: 'Core vs consumer responsibilities remain clear',
+        description: 'Confirm UI/consumer code does not absorb core service responsibilities.',
+        completed: false
+      }
+    ];
+  }
+
+  return [];
+}
+
+function buildArchitectureText(repoDocs) {
+  const byRole = Object.fromEntries(repoDocs.map((d) => [d.role, d]));
+  if (byRole.architecture?.content) return byRole.architecture.content;
+
+  const parts = [];
+  if (byRole.context?.content) {
+    parts.push(`# Context\n\n${byRole.context.content}`);
+  }
+  if (byRole.product?.content) {
+    parts.push(`# Product\n\n${byRole.product.content}`);
+  }
+  return parts.join('\n\n---\n\n');
+}
+
+/**
+ * Fetch PR metadata + changed files with parsed diffs for the review workspace,
+ * plus PR-head repo docs seeded into Level 1 / Level 2.
  */
 export async function fetchPullRequestWorkspace(owner, repo, number) {
   const [pr, files] = await Promise.all([
     githubFetch(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}`),
     githubFetch(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}/files?per_page=100`)
   ]);
+
+  const headSha = pr.head?.sha;
+  let repoDocs = [];
+  if (headSha) {
+    try {
+      repoDocs = await fetchRepoDocsAtHead(owner, repo, headSha, files);
+    } catch (err) {
+      // Non-fatal: PR diffs still load if docs lookup fails (e.g. rate limit)
+      console.warn('[github] repo docs fetch failed:', err.message);
+      repoDocs = [];
+    }
+  }
 
   const mappedFiles = files.map((f, idx) => ({
     id: `gh-${number}-file-${idx + 1}`,
@@ -190,26 +516,9 @@ export async function fetchPullRequestWorkspace(owner, repo, number) {
   }));
 
   const bodyPreview = (pr.body || '').trim();
-  const criteriaFromBody = bodyPreview
-    ? bodyPreview
-        .split('\n')
-        .map((l) => l.trim())
-        .filter((l) => /^[-*]\s+\[[ xX]\]/.test(l) || /^[-*]\s+/.test(l))
-        .slice(0, 8)
-        .map((l, i) => ({
-          id: `AC-${i + 1}`,
-          text: l.replace(/^[-*]\s+(\[[ xX]\]\s*)?/, ''),
-          completed: /\[[xX]\]/.test(l)
-        }))
-    : [];
-
-  if (criteriaFromBody.length === 0) {
-    criteriaFromBody.push(
-      { id: 'AC-1', text: `Review intent: ${pr.title}`, completed: false },
-      { id: 'AC-2', text: 'Validate changed files for correctness and regressions', completed: false },
-      { id: 'AC-3', text: 'Confirm tests / coverage for the touched paths', completed: false }
-    );
-  }
+  const criteria = buildCriteriaFromDocs(pr.title, bodyPreview, repoDocs);
+  const standards = buildStandardsFromDocs(repoDocs);
+  const architectureText = buildArchitectureText(repoDocs);
 
   return {
     queryId: `GH-${owner}/${repo}#${pr.number}`,
@@ -223,13 +532,17 @@ export async function fetchPullRequestWorkspace(owner, repo, number) {
       id: `${owner}/${repo}#${pr.number}`,
       title: pr.title,
       description: bodyPreview || `Open pull request #${pr.number} from ${pr.user?.login || 'unknown'} against ${pr.base?.ref || 'main'}.`,
-      criteria: criteriaFromBody
+      criteria
     },
     files: mappedFiles,
+    repoDocs,
+    architectureText,
+    standards,
     meta: {
       draft: Boolean(pr.draft),
       base: pr.base?.ref,
       head: pr.head?.ref,
+      headSha: headSha || null,
       createdAt: pr.created_at,
       updatedAt: pr.updated_at,
       additions: pr.additions,

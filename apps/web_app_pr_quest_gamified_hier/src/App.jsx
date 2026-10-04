@@ -105,6 +105,7 @@ function AppContent() {
   const [files, setFiles] = useState(initialFiles);
   const [references, setReferences] = useState(initialReferences);
   const [architectureText, setArchitectureText] = useState(defaultArchitecture);
+  const [repoDocs, setRepoDocs] = useState([]);
   const [standards, setStandards] = useState(initialStandards);
   const [activeSymbolKey, setActiveSymbolKey] = useState("rotateSessionToken");
   const [auditedSymbols, setAuditedSymbols] = useState([]);
@@ -198,6 +199,8 @@ function AppContent() {
           setActiveFileId(safeFiles[0]?.id || null);
         }
         if (state.standards && Array.isArray(state.standards)) setStandards(state.standards);
+        if (typeof state.architectureText === 'string') setArchitectureText(state.architectureText);
+        if (Array.isArray(state.repoDocs)) setRepoDocs(state.repoDocs);
         if (state.auditedSymbols && Array.isArray(state.auditedSymbols)) setAuditedSymbols(state.auditedSymbols);
         if (state.testSuites && Array.isArray(state.testSuites)) setTestSuites(state.testSuites);
         if (state.verdicts && Array.isArray(state.verdicts)) setVerdicts(state.verdicts);
@@ -233,6 +236,8 @@ function AppContent() {
         files,
         references,
         standards,
+        architectureText,
+        repoDocs,
         auditedSymbols,
         testSuites,
         verdicts
@@ -248,7 +253,7 @@ function AppContent() {
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [currentQueryId, currentQueryTitle, jiraTicket, files, standards, auditedSymbols, testSuites, verdicts, level, unlockedLevel, xp, awardedActions]);
+  }, [currentQueryId, currentQueryTitle, jiraTicket, files, standards, architectureText, repoDocs, auditedSymbols, testSuites, verdicts, level, unlockedLevel, xp, awardedActions]);
 
   // --- Persona Switch Handler ---
   const handleSelectPersona = async (personaId) => {
@@ -379,13 +384,25 @@ function AppContent() {
       setCurrentQueryTitle(existing.data.title || title);
       await loadQueryState(queryId, currentUser);
     } else {
+      const nextStandards =
+        Array.isArray(workspace.standards) && workspace.standards.length > 0
+          ? workspace.standards.map(s => ({ ...s, completed: false }))
+          : initialStandards.map(s => ({ ...s, completed: false }));
+      const nextArchitectureText =
+        typeof workspace.architectureText === 'string' && workspace.architectureText.trim()
+          ? workspace.architectureText
+          : defaultArchitecture;
+      const nextRepoDocs = Array.isArray(workspace.repoDocs) ? workspace.repoDocs : [];
+
       const newState = {
         queryId,
         title,
         jiraTicket: workspace.jiraTicket,
         files: workspace.files,
         references: [],
-        standards: initialStandards.map(s => ({ ...s, completed: false })),
+        standards: nextStandards,
+        architectureText: nextArchitectureText,
+        repoDocs: nextRepoDocs,
         auditedSymbols: [],
         testSuites: initialTestSuites,
         verdicts: [],
@@ -404,7 +421,9 @@ function AppContent() {
       setJiraTicket(workspace.jiraTicket);
       setFiles(workspace.files);
       setActiveFileId(workspace.files[0]?.id || null);
-      setStandards(initialStandards.map(s => ({ ...s, completed: false })));
+      setStandards(nextStandards);
+      setArchitectureText(nextArchitectureText);
+      setRepoDocs(nextRepoDocs);
       setAuditedSymbols([]);
       setTestSuites(initialTestSuites);
       setVerdicts([]);
@@ -414,6 +433,17 @@ function AppContent() {
       setAwardedActions([]);
       setSelectedSpec('ALL');
       setSyncStatus('saved');
+
+      if (nextRepoDocs.length > 0) {
+        setQuestLogs(prev => [
+          {
+            id: Date.now() + Math.random(),
+            text: `📄 Loaded ${nextRepoDocs.length} repo doc(s) from PR head: ${nextRepoDocs.map(d => d.path).join(', ')}`,
+            timestamp: new Date().toLocaleTimeString()
+          },
+          ...prev
+        ].slice(0, 5));
+      }
     }
 
     const updatedQueries = await api.listQueries();
@@ -866,6 +896,8 @@ function AppContent() {
                 onSelectFileByPath={handleSelectFileByPath}
                 onAddXp={handleAddXp}
                 onOpenArchModal={() => setIsDiagramModalOpen(true)}
+                onOpenRepoDocs={() => setIsArchOpen(true)}
+                repoDocs={repoDocs}
                 auditedSymbols={auditedSymbols}
                 onToggleSymbolAudit={handleToggleSymbolAudit}
                 isLevelComplete={
@@ -949,16 +981,27 @@ function AppContent() {
         isOpen={isDiagramModalOpen}
         onClose={() => setIsDiagramModalOpen(false)}
         jiraTicket={jiraTicket}
-        architectureStandards={standards}
+        currentQueryTitle={currentQueryTitle}
+        files={files}
+        architectureText={architectureText}
+        repoDocs={repoDocs}
+        onSelectNodeFile={(path) => {
+          handleSelectFileByPath(path);
+          setIsDiagramModalOpen(false);
+        }}
         onAddXp={handleAddXp}
       />
 
-      {/* Architecture Text Modal */}
+      {/* Architecture / Repo Docs Modal */}
       <ArchitectureModal 
         isOpen={isArchOpen} 
         onClose={() => setIsArchOpen(false)} 
         architectureText={architectureText} 
-        onSave={setArchitectureText}
+        repoDocs={repoDocs}
+        onSave={(nextText, nextDocs) => {
+          setArchitectureText(nextText);
+          if (Array.isArray(nextDocs)) setRepoDocs(nextDocs);
+        }}
         onAddXp={handleAddXp}
       />
 
