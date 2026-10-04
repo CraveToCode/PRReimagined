@@ -200,11 +200,24 @@ This system implements a secure, client-side token rotation mechanism to prevent
 4. **ProtectedRoute (UI Guard)**: Restricts access to authenticated routes based on the SessionContext state.
 `;
 
-export const initialArchitectureMermaid = `graph TD
-  SM["SessionManager (Tier 1 Core)<br/>Token Storage & Crypto Rotation"] -->|POST /api/auth/rotate| API_SRV["Auth Server"]
-  API["ApiClient (Tier 1 Core)<br/>Axios 401 Error Interceptor"] -->|Invokes rotateSessionToken()| SM
+export const baselineArchitectureMermaid = `graph TD
+  API_OLD["ApiClient (Tier 1 Core)<br/>Axios HTTP Client"] -->|Direct Request| REST["Protected REST APIs"]
+  API_OLD -->|401 Unauthorized [Immediate Kill]| LOGIN["/login Redirection<br/>Session Eviction"]
+  SC_OLD["SessionProvider (Tier 2 Consumer)<br/>Passive User State Context"] -->|Static token from storage| API_OLD
+  PR_OLD["ProtectedRoute (Tier 2 Consumer)<br/>UI Route Navigation Guard"] -->|Checks localStorage.token| SC_OLD
+  
+  classDef core fill:#FBEFEF,stroke:#C35832,stroke-width:2px,color:#242220;
+  classDef consumer fill:#FFFDF9,stroke:#D08A29,stroke-width:2px,color:#242220;
+  classDef external fill:#F1ECE4,stroke:#6B635A,stroke-width:1px,color:#6B635A;
+  class API_OLD core;
+  class SC_OLD,PR_OLD consumer;
+  class REST,LOGIN external;`;
+
+export const proposedArchitectureMermaid = `graph TD
+  SM["SessionManager (Tier 1 Core) [NEW]<br/>Token Storage & Crypto Rotation"] -->|POST /api/auth/rotate| API_SRV["Auth Server"]
+  API["ApiClient (Tier 1 Core) [MODIFIED]<br/>Axios 401 Error Interceptor"] -->|Invokes rotateSessionToken()| SM
   API -->|Retries with Bearer JWT| REST["Protected REST APIs"]
-  SC["SessionProvider (Tier 2 Consumer)<br/>React Context & Idle Polling"] -->|Periodic 14-min refresh| SM
+  SC["SessionProvider (Tier 2 Consumer) [MODIFIED]<br/>React Context & Idle Polling"] -->|Periodic 14-min refresh| SM
   PR["ProtectedRoute (Tier 2 Consumer)<br/>UI Route Navigation Guard"] -->|Subscribes to { user }| SC
   TEST["SessionManager.test.js (Tier 3)<br/>Unit Tests & Assertions"] -->|Verifies Token Rotation| SM
 
@@ -214,6 +227,93 @@ export const initialArchitectureMermaid = `graph TD
   class SM,API core;
   class SC,PR consumer;
   class TEST support;`;
+
+export const diffArchitectureMermaid = `graph TD
+  SM["[+ ADDED] SessionManager (Tier 1 Core)<br/>Token Storage & Crypto Rotation Engine"]:::added -->|POST /api/auth/rotate| API_SRV["Auth Server"]:::neutral
+  API["[~ MODIFIED] ApiClient (Tier 1 Core)<br/>Axios 401 Interceptor with _retry Guard"]:::modified -->|[+ NEW FLOW] Invokes rotateSessionToken()| SM
+  API -->|Retries failed requests with Bearer JWT| REST["Protected REST APIs"]:::neutral
+  SC["[~ MODIFIED] SessionProvider (Tier 2 Consumer)<br/>Unmount-Cleaned 14-Min Rotation Interval"]:::modified -->|[+ NEW FLOW] Periodic 14-min refresh| SM
+  PR["[= UNCHANGED] ProtectedRoute (Tier 2 Consumer)<br/>UI Route Navigation Guard"]:::neutral -->|Subscribes to { user }| SC
+  TEST["[+ ADDED] SessionManager.test.js (Tier 3)<br/>Unit Tests & Assertions Matrix"]:::added -->|Verifies Token Rotation| SM
+
+  classDef added fill:#F4F8F5,stroke:#4F6D56,stroke-width:3px,color:#242220,stroke-dasharray: 4 2;
+  classDef modified fill:#FFFDF9,stroke:#D08A29,stroke-width:3px,color:#242220;
+  classDef neutral fill:#F9F6F0,stroke:#6B635A,stroke-width:1.5px,color:#242220;`;
+
+export const initialArchitectureMermaid = proposedArchitectureMermaid;
+
+export const netArchitecturalChanges = {
+  summary: "Introduces an autonomous token rotation lifecycle with localStorage fallback, replacing hard 401 session terminations with self-healing request retries and proactive 14-minute background refreshes.",
+  stats: {
+    addedNodes: 1,
+    addedEdges: 3,
+    modifiedNodes: 2,
+    removedFlows: 1,
+    unchangedNodes: 2
+  },
+  changes: [
+    {
+      id: "change-1",
+      nodeId: "SM",
+      type: "added_node",
+      title: "SessionManager Module Introduced",
+      target: "src/services/SessionManager.js",
+      tier: "Tier 1: Core Logic",
+      badge: "+ ADDED NODE",
+      badgeColor: "bg-[#F4F8F5] text-[#4F6D56] border-[#4F6D56]/30",
+      description: "Encapsulates AES-GCM token storage and cryptographic rotation inside a dedicated service, isolating credentials away from global window scope.",
+      diagrammaticImpact: "New central hub node between HTTP interceptor, React context, and Auth Server."
+    },
+    {
+      id: "change-2",
+      nodeId: "API",
+      type: "modified_flow",
+      title: "401 Error Recovery Loop with _retry Guard",
+      target: "src/api/ApiClient.js",
+      tier: "Tier 1: Core Logic",
+      badge: "~ MODIFIED FLOW",
+      badgeColor: "bg-[#FFFDF9] text-[#D08A29] border-[#D08A29]/30",
+      description: "Replaces destructive immediate /login redirection with an Axios response interceptor that queries SessionManager.rotateSessionToken() and replays original requests.",
+      diagrammaticImpact: "Direct feedback loop from ApiClient back to SessionManager with idempotent _retry guard."
+    },
+    {
+      id: "change-3",
+      nodeId: "SC",
+      type: "added_flow",
+      title: "Proactive 14-Minute Background Rotation Timer",
+      target: "src/context/SessionContext.jsx",
+      tier: "Tier 2: Consumer",
+      badge: "+ ADDED FLOW",
+      badgeColor: "bg-[#F4F8F5] text-[#4F6D56] border-[#4F6D56]/30",
+      description: "SessionProvider sets up a 14-minute interval timer that automatically rotates tokens before JWT expiration (15m TTL), properly cleaned up on unmount.",
+      diagrammaticImpact: "New periodic trigger link connecting SessionProvider to SessionManager."
+    },
+    {
+      id: "change-4",
+      nodeId: "LOGIN",
+      type: "removed_flow",
+      title: "Hard Session Termination on First 401",
+      target: "Legacy ApiClient Error Handler",
+      tier: "Deprecated Architecture",
+      badge: "- REMOVED FLOW",
+      badgeColor: "bg-[#FBEFEF] text-[#C35832] border-[#C35832]/30",
+      description: "Eliminates the disruptive hard logout where any momentary 401 wiped all user state without retry.",
+      diagrammaticImpact: "Bypasses old immediate redirect branch to /login."
+    },
+    {
+      id: "change-5",
+      nodeId: "PR",
+      type: "unchanged_node",
+      title: "Route Guarding Boundaries",
+      target: "src/components/ProtectedRoute.jsx",
+      tier: "Tier 2: Consumer",
+      badge: "= UNCHANGED",
+      badgeColor: "bg-[#F9F6F0] text-[#6B635A] border-[#E6E0D5]",
+      description: "Navigation security semantics remain identical. Protected routes continue reading auth state seamlessly without architectural changes.",
+      diagrammaticImpact: "Preserved consumer contract at the UI perimeter."
+    }
+  ]
+};
 
 export const architectureStandards = [
   {
@@ -440,6 +540,10 @@ export const initialTestSuites = [
     status: "pass",
     executionMs: 14,
     assertionsCount: 2,
+    assertions: [
+      { text: "expect(token).toBe('new_at')", status: "pass", label: "Access Token Verification" },
+      { text: "expect(localStorage.getItem('session_token')).toBe('new_at')", status: "pass", label: "Local Storage Persistence" }
+    ],
     code: `it('should successfully rotate token and store in localStorage', async () => {
   const manager = new SessionManager();
   global.fetch = jest.fn().mockImplementation(() =>
@@ -479,6 +583,11 @@ async rotateSessionToken() {
     status: "pass",
     executionMs: 22,
     assertionsCount: 3,
+    assertions: [
+      { text: "expect(mockError.config._retry).toBe(true)", status: "pass", label: "Idempotent Retry Guard" },
+      { text: "expect(mockError.config.headers['Authorization']).toBe('Bearer fresh_token_123')", status: "pass", label: "Header Injection" },
+      { text: "expect(apiClient).toHaveBeenCalledWith(originalRequest)", status: "pass", label: "Request Replay Execution" }
+    ],
     code: `it('should retry original request with new token on 401 response', async () => {
   const mockError = { response: { status: 401 }, config: { headers: {} } };
   jest.spyOn(sessionManager, 'rotateSessionToken').mockResolvedValue('fresh_token_123');
@@ -516,6 +625,9 @@ async error => {
     status: "warning",
     executionMs: 0,
     assertionsCount: 0,
+    assertions: [
+      { text: "expect(() => manager.rotateSessionToken()).rejects.toThrow('No refresh token available')", status: "missing", label: "Missing Negative Edge Case Assertion" }
+    ],
     code: `// ⚠️ POTENTIAL GAP IDENTIFIED BY AGENTIC REVIEWER:
 // PR currently lacks negative unit test for empty refresh token:
 it.todo('should throw Error("No refresh token available") if refreshToken is empty');`,
@@ -534,6 +646,9 @@ if (!this.refreshToken) throw new Error('No refresh token available');`,
     status: "pass",
     executionMs: 18,
     assertionsCount: 1,
+    assertions: [
+      { text: "expect(clearIntervalSpy).toHaveBeenCalled()", status: "pass", label: "Timer Cleanup on Unmount" }
+    ],
     code: `it('should clear rotation interval timer on unmount', () => {
   jest.useFakeTimers();
   const clearIntervalSpy = jest.spyOn(window, 'clearInterval');

@@ -50,39 +50,77 @@ export default function DynamicLeftPanel({
 
     return (
       <div className="space-y-4">
-        {/* Architecture Standards Checklist */}
+        {/* Prominent Visual Architecture Diagram & Net Diff Launcher Card */}
+        <div className="bg-gradient-to-br from-[#FFFDF9] to-[#F9F6F0] border-2 border-[#C35832]/40 rounded-xl p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-[#C35832] bg-[#FBEFEF] px-2 py-0.5 rounded border border-[#C35832]/20 flex items-center gap-1">
+              <Layers className="w-3.5 h-3.5" /> Architecture Topology
+            </span>
+            <span className="text-[10px] font-bold bg-[#F4F8F5] text-[#4F6D56] px-2 py-0.5 rounded border border-[#4F6D56]/20">
+              Visual Net Diff Available
+            </span>
+          </div>
+
+          <h2 className="text-sm font-bold text-[#242220] mt-2.5 leading-snug">
+            System Architecture & Net Changes
+          </h2>
+          <p className="text-[11px] text-[#6B635A] mt-1 leading-relaxed">
+            PR #PROJ-402 alters component topology. View the interactive diagram showing new modules, modified 401 retry loops, and proactive timers.
+          </p>
+
+          <div className="flex items-center gap-1.5 my-3 flex-wrap">
+            <span className="text-[10px] font-bold bg-[#F4F8F5] text-[#4F6D56] px-2 py-0.5 rounded border border-[#4F6D56]/30">
+              +1 New Module
+            </span>
+            <span className="text-[10px] font-bold bg-[#FFFDF9] text-[#D08A29] px-2 py-0.5 rounded border border-[#D08A29]/30">
+              ~2 Modified Flows
+            </span>
+            <span className="text-[10px] font-bold bg-[#FBEFEF] text-[#C35832] px-2 py-0.5 rounded border border-[#C35832]/30">
+              -1 Dead Loop
+            </span>
+          </div>
+
+          <button
+            onClick={onOpenArchModal}
+            className="w-full py-2.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer group"
+          >
+            <span>Launch Diagram & Net Diff Modal</span>
+            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+          </button>
+        </div>
+
+        {/* Architecture Standards Checklist (Now Spacious & Uncramped) */}
         <div className="bg-white border border-[#E6E0D5] rounded-xl p-4 shadow-sm flex flex-col">
           <div className="border-b border-[#F1ECE4] pb-3 mb-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#C35832] bg-[#FBEFEF] px-2 py-0.5 rounded border border-[#C35832]/20 flex items-center gap-1">
-                <BookOpen className="w-3.5 h-3.5" /> Best Practice Standards
+              <span className="text-xs font-bold text-[#242220] flex items-center gap-1.5">
+                <BookOpen className="w-3.5 h-3.5 text-[#C35832]" />
+                <span>Standard Practice Checklist</span>
               </span>
-              <span className="text-[10px] text-[#4F6D56] font-bold">
-                {verifiedCount}/{architectureStandards.length} Verified
+              <span className="text-xs text-[#4F6D56] font-bold bg-[#F4F8F5] px-2 py-0.5 rounded border border-[#4F6D56]/20">
+                {verifiedCount}/{architectureStandards.length} Audited
               </span>
             </div>
-            <h2 className="text-sm font-bold text-[#242220] mt-2 leading-snug">
-              Architectural Standards Checklist
-            </h2>
-            <p className="text-[11px] text-[#6B635A] mt-1">
-              Derived from standard practice design docs. Audit Tier 1 modules against these architectural rules:
+            <p className="text-[11px] text-[#6B635A] mt-1.5 leading-relaxed">
+              Verify Tier 1 modules against production security and resilience standards from <code className="bg-[#F1ECE4] px-1 rounded text-[10px]">docs/standards/</code>:
             </p>
           </div>
 
-          <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[380px] pr-1">
+          <div className="space-y-3 flex-1 overflow-y-auto max-h-[460px] pr-1">
             {architectureStandards.map((std) => (
               <div 
                 key={std.id}
-                className={`p-2.5 rounded-lg border transition-all ${
+                className={`p-3 rounded-lg border transition-all ${
                   std.completed 
                     ? 'bg-[#F4F8F5] border-[#4F6D56]/30 text-[#4F6D56]' 
-                    : 'bg-[#FFFDF9] border-[#E6E0D5] text-[#242220]'
+                    : 'bg-[#FFFDF9] border-[#E6E0D5] text-[#242220] hover:border-[#C35832]/30'
                 }`}
               >
-                <div className="flex items-start gap-2">
+                <div className="flex items-start gap-2.5">
                   <button 
                     onClick={() => onToggleStandard(std.id)}
-                    className="mt-0.5 text-[#C35832] hover:scale-110 transition-transform flex-shrink-0"
+                    className="mt-0.5 text-[#C35832] hover:scale-110 transition-transform flex-shrink-0 cursor-pointer"
+                    title={std.completed ? "Mark incomplete" : "Mark standard audited (+25 XP)"}
                   >
                     {std.completed ? (
                       <CheckSquare className="w-4 h-4 text-[#4F6D56]" />
@@ -90,18 +128,22 @@ export default function DynamicLeftPanel({
                       <Square className="w-4 h-4 text-[#6B635A]" />
                     )}
                   </button>
-                  <div className="text-xs">
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="text-xs flex-1">
+                    <div className="flex items-center justify-between gap-1 flex-wrap">
                       <span className="font-bold text-[#242220]">{std.title}</span>
-                      <span className="text-[9px] font-mono bg-[#F1ECE4] text-[#6B635A] px-1 rounded">
+                      <span className="text-[9px] font-mono bg-[#F1ECE4] text-[#6B635A] px-1.5 py-0.2 rounded font-semibold">
                         {std.id}
                       </span>
+                    </div>
+                    <div className="text-[10px] text-[#C35832] font-semibold mt-0.5">
+                      {std.category}
                     </div>
                     <p className="text-[11px] text-[#6B635A] leading-relaxed mt-1">
                       {std.description}
                     </p>
-                    <div className="text-[9px] text-[#6B635A]/70 font-mono mt-1">
-                      Source: {std.standardFile}
+                    <div className="text-[9px] text-[#6B635A]/70 font-mono mt-1.5 flex items-center justify-between pt-1 border-t border-current/10">
+                      <span>Ref: {std.standardFile}</span>
+                      <span className="font-semibold text-[#4F6D56]">{std.completed ? "✓ Audited" : "+25 XP"}</span>
                     </div>
                   </div>
                 </div>
@@ -110,22 +152,16 @@ export default function DynamicLeftPanel({
           </div>
 
           <div className="mt-3 pt-3 border-t border-[#F1ECE4] flex items-center justify-between text-[11px] text-[#6B635A]">
-            <span>+25 XP per standard check</span>
+            <span>+25 XP per audited item</span>
             <button
               onClick={onOpenArchModal}
-              className="text-[#C35832] font-semibold hover:underline"
+              className="text-[#C35832] font-semibold hover:underline flex items-center gap-1"
             >
-              View Full Architecture Map
+              <span>Inspect Architecture Topology</span>
+              <ArrowRight className="w-3 h-3" />
             </button>
           </div>
         </div>
-
-        {/* Visual Mermaid Flowchart */}
-        <MermaidViewer 
-          mermaidCode={mermaidCode}
-          onSelectNodeFile={onSelectFileByPath}
-          onOpenArchModal={onOpenArchModal}
-        />
       </div>
     );
   }
