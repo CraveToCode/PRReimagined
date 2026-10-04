@@ -20,6 +20,7 @@ import FunctionInspectorPanel from './components/FunctionInspectorPanel';
 import TestReviewWorkspace from './components/TestReviewWorkspace';
 import ArchitectureModal from './components/ArchitectureModal';
 import ArchitectureDiagramModal from './components/ArchitectureDiagramModal';
+import InfoSidePanel from './components/InfoSidePanel';
 import { Award, CheckCircle, AlertTriangle, Sparkles, ArrowRight } from 'lucide-react';
 
 export default function App() {
@@ -91,6 +92,7 @@ export default function App() {
   const [isDiagramModalOpen, setIsDiagramModalOpen] = useState(false);
   const [isVerdictOpen, setIsVerdictOpen] = useState(false);
   const [isProgressOpen, setIsProgressOpen] = useState(false);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [questLogs, setQuestLogs] = useState([]);
 
   useEffect(() => {
@@ -296,6 +298,7 @@ export default function App() {
         onOpenVerdict={() => setIsVerdictOpen(true)}
         onOpenArch={() => setIsDiagramModalOpen(true)}
         onOpenProgress={() => setIsProgressOpen(true)}
+        onOpenInfo={() => setIsInfoOpen(true)}
       />
 
       {/* Active Mission & Transition Banner */}
@@ -489,6 +492,7 @@ export default function App() {
                     onAddXp={handleAddXp}
                     level={level}
                     onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
+                    onOpenInfo={() => setIsInfoOpen(true)}
                   />
                 </section>
 
@@ -514,6 +518,7 @@ export default function App() {
                   onAddXp={handleAddXp}
                   level={level}
                   onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
+                  onOpenInfo={() => setIsInfoOpen(true)}
                 />
               </section>
             )}
@@ -805,6 +810,12 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Global Informational Side Panel / Drawer */}
+      <InfoSidePanel 
+        isOpen={isInfoOpen} 
+        onClose={() => setIsInfoOpen(false)} 
+      />
     </div>
   );
 }

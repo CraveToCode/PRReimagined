@@ -10,12 +10,12 @@ export default function HierarchicalDiffViewer({
   onAddComment,
   onAddXp,
   level = 1,
-  onInspectSymbol
+  onInspectSymbol,
+  onOpenInfo
 }) {
   const [commentInputs, setCommentInputs] = useState({});
   const [expandedFiles, setExpandedFiles] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [showTierExplainer, setShowTierExplainer] = useState(false);
 
   const detectSymbol = (content) => {
     if (content.includes("rotateSessionToken")) return "rotateSessionToken";
@@ -68,66 +68,28 @@ export default function HierarchicalDiffViewer({
     <div className="space-y-4">
       {/* Header & Search Bar */}
       <div className="bg-white border border-[#E6E0D5] rounded-xl p-4 shadow-xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div className="text-xs font-bold text-[#6B635A] uppercase tracking-wider">
-            📁 Hierarchical Diff Workspace ({sortedFiles.length} files)
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-[#6B635A] uppercase tracking-wider">
+              📁 Diff Workspace ({sortedFiles.length} {sortedFiles.length === 1 ? 'file' : 'files'})
+            </span>
+            {selectedSpec !== 'ALL' && (
+              <span className="text-[10px] font-bold bg-[#C35832]/10 text-[#C35832] px-2 py-0.5 rounded border border-[#C35832]/20 font-mono">
+                Filtered: {selectedSpec}
+              </span>
+            )}
           </div>
-          <div className="text-[11px] text-[#6B635A] flex flex-wrap items-center gap-2">
-            <span className="inline-block w-2 h-2 bg-[#C35832] rounded-full"></span> Tier 1: Core
-            <span className="inline-block w-2 h-2 bg-[#D08A29] rounded-full"></span> Tier 2: Consumer
-            <span className="inline-block w-2 h-2 bg-[#4F6D56] rounded-full"></span> Tier 3: Support
+          {onOpenInfo && (
             <button
-              onClick={() => setShowTierExplainer(!showTierExplainer)}
-              className="text-[#C35832] hover:text-[#A84725] font-semibold underline ml-1 cursor-pointer flex items-center gap-0.5"
+              onClick={onOpenInfo}
+              className="text-xs text-[#6B635A] hover:text-[#C35832] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+              title="Learn what Tiers and Review Levels mean"
             >
-              <Info className="w-3 h-3" /> What do Tiers mean?
+              <Info className="w-3.5 h-3.5 text-[#C35832]" />
+              <span className="hidden sm:inline">Tier Guide</span>
             </button>
-          </div>
+          )}
         </div>
-
-        {/* Tier Explainer Card */}
-        {showTierExplainer && (
-          <div className="bg-[#FFFDF9] border border-[#E6E0D5] rounded-lg p-3 text-xs space-y-2 transition-all">
-            <div className="font-bold text-[#242220] flex items-center justify-between">
-              <span>Why Hierarchical Tiers?</span>
-              <button 
-                onClick={() => setShowTierExplainer(false)}
-                className="text-[#6B635A] hover:text-[#242220] p-0.5"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <p className="text-[11px] text-[#6B635A] leading-relaxed">
-              In agentic PR reviews, diffs are prioritized by architectural impact rather than flat alphabetical order:
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1 text-[11px]">
-              <div className="bg-white border border-[#C35832]/20 p-2.5 rounded-lg shadow-2xs">
-                <div className="font-bold text-[#C35832] flex items-center gap-1.5 mb-1">
-                  <span className="w-2 h-2 rounded-full bg-[#C35832]"></span> Tier 1: Core Logic
-                </div>
-                <p className="text-[#6B635A] leading-relaxed">
-                  Foundational state, security, token rotation, and network wrappers (SessionManager.js, ApiClient.js). High risk; errors break all downstream services.
-                </p>
-              </div>
-              <div className="bg-white border border-[#D08A29]/20 p-2.5 rounded-lg shadow-2xs">
-                <div className="font-bold text-[#D08A29] flex items-center gap-1.5 mb-1">
-                  <span className="w-2 h-2 rounded-full bg-[#D08A29]"></span> Tier 2: Consumer
-                </div>
-                <p className="text-[#6B635A] leading-relaxed">
-                  Context providers, hooks, and views (SessionContext.jsx, ProtectedRoute.jsx). Verifies that API contracts and state subscriptions remain unbroken.
-                </p>
-              </div>
-              <div className="bg-white border border-[#4F6D56]/20 p-2.5 rounded-lg shadow-2xs">
-                <div className="font-bold text-[#4F6D56] flex items-center gap-1.5 mb-1">
-                  <span className="w-2 h-2 rounded-full bg-[#4F6D56]"></span> Tier 3: Support
-                </div>
-                <p className="text-[#6B635A] leading-relaxed">
-                  Unit tests and mock configurations (SessionManager.test.js). Verifies edge case coverage, test assertions, and regression safety.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Search Input */}
         <div className="relative">

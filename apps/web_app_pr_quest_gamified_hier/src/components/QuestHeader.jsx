@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Award, CheckCircle, RefreshCw, ChevronRight } from 'lucide-react';
+import { Shield, Award, CheckCircle, RefreshCw, ChevronRight, Info, HelpCircle } from 'lucide-react';
 
 export default function QuestHeader({ 
   level, 
@@ -12,7 +12,8 @@ export default function QuestHeader({
   onReset, 
   onOpenVerdict,
   onOpenArch,
-  onOpenProgress
+  onOpenProgress,
+  onOpenInfo
 }) {
   const levels = [
     { num: 1, name: "Spec & Intent Check", desc: "Verify changes map to JIRA criteria" },
@@ -35,6 +36,13 @@ export default function QuestHeader({
               <span className="text-xs font-semibold bg-[#F1ECE4] text-[#6B635A] px-2 py-0.5 rounded-full border border-[#E6E0D5]">
                 v1.0 Agentic Reviewer
               </span>
+              <button
+                onClick={onOpenInfo}
+                className="p-1 text-[#6B635A] hover:text-[#C35832] hover:bg-[#F1ECE4] rounded-full transition-colors cursor-pointer"
+                title="What do Tiers mean? Click to open Review Guide"
+              >
+                <HelpCircle className="w-4 h-4 text-[#C35832]" />
+              </button>
             </div>
             <p className="text-xs text-[#6B635A] mt-0.5">Gamified Hierarchical Code Review Workspace</p>
           </div>
@@ -76,21 +84,29 @@ export default function QuestHeader({
 
           <div className="flex items-center gap-2">
             <button
+              onClick={onOpenInfo}
+              className="px-3 py-2 bg-white border border-[#E6E0D5] text-[#242220] hover:bg-[#F9F6F0] rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="What do Tiers and Levels mean? Open informational guide"
+            >
+              <Info className="w-4 h-4 text-[#C35832]" />
+              <span>Tier Guide</span>
+            </button>
+            <button
               onClick={onOpenArch}
-              className="px-3 py-2 bg-white border border-[#E6E0D5] text-[#242220] hover:bg-[#F9F6F0] rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5"
+              className="px-3 py-2 bg-white border border-[#E6E0D5] text-[#242220] hover:bg-[#F9F6F0] rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               📖 Architecture Map
             </button>
             <button
               onClick={onOpenVerdict}
-              className="px-4 py-2 bg-[#C35832] hover:bg-[#A84725] text-white rounded-lg text-sm font-semibold shadow-sm transition-colors flex items-center gap-1.5"
+              className="px-4 py-2 bg-[#C35832] hover:bg-[#A84725] text-white rounded-lg text-sm font-semibold shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               🏆 Final Verdict
             </button>
             <button
               onClick={onReset}
               title="Reset Quest Progress"
-              className="p-2 text-[#6B635A] hover:text-[#C35832] hover:bg-[#F9F6F0] rounded-lg transition-colors"
+              className="p-2 text-[#6B635A] hover:text-[#C35832] hover:bg-[#F9F6F0] rounded-lg transition-colors cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
