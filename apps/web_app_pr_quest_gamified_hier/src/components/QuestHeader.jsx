@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Award, CheckCircle, RefreshCw } from 'lucide-react';
+import { Shield, Award, CheckCircle, RefreshCw, ChevronRight } from 'lucide-react';
 
 export default function QuestHeader({ 
   level, 
@@ -8,9 +8,11 @@ export default function QuestHeader({
   xp, 
   totalFiles, 
   reviewedCount, 
+  progressPercent = 0,
   onReset, 
   onOpenVerdict,
-  onOpenArch
+  onOpenArch,
+  onOpenProgress
 }) {
   const levels = [
     { num: 1, name: "Spec & Intent Check", desc: "Verify changes map to JIRA criteria" },
@@ -18,8 +20,6 @@ export default function QuestHeader({
     { num: 3, name: "Blast Radius & Impact", desc: "Validate cross-file dependencies" },
     { num: 4, name: "Tests & Final Verdict", desc: "Review unit tests & submit review" }
   ];
-
-  const progressPercent = Math.min(100, Math.round((reviewedCount / totalFiles) * 100));
 
   return (
     <header className="bg-white border-b border-[#E6E0D5] px-6 py-4 shadow-sm">
@@ -52,20 +52,27 @@ export default function QuestHeader({
             </div>
           </div>
 
-          <div className="bg-[#F9F6F0] border border-[#E6E0D5] rounded-lg px-4 py-2 flex items-center gap-3 min-w-[160px]">
+          <button 
+            onClick={onOpenProgress}
+            className="bg-[#F9F6F0] hover:bg-[#F1ECE4] border border-[#E6E0D5] hover:border-[#C35832]/50 rounded-lg px-4 py-2 flex items-center gap-3 min-w-[170px] transition-all cursor-pointer text-left group shadow-2xs"
+            title="Click to view detailed Review Progress breakdown"
+          >
             <div className="w-full">
-              <div className="flex justify-between text-[10px] uppercase tracking-wider text-[#6B635A] font-bold mb-1">
-                <span>Review Progress</span>
-                <span>{progressPercent}%</span>
+              <div className="flex justify-between text-[10px] uppercase tracking-wider text-[#6B635A] font-bold mb-1 group-hover:text-[#C35832] transition-colors">
+                <span className="flex items-center gap-1">
+                  <span>Review Progress</span>
+                  <ChevronRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </span>
+                <span className="font-extrabold text-[#242220]">{progressPercent}%</span>
               </div>
               <div className="w-full bg-[#E6E0D5] h-2 rounded-full overflow-hidden">
                 <div 
-                  className="bg-[#4F6D56] h-full transition-all duration-500" 
+                  className="bg-[#4F6D56] h-full transition-all duration-500 rounded-full" 
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
             </div>
-          </div>
+          </button>
 
           <div className="flex items-center gap-2">
             <button

@@ -85,6 +85,7 @@ export default function App() {
   });
   const [isArchOpen, setIsArchOpen] = useState(false);
   const [isVerdictOpen, setIsVerdictOpen] = useState(false);
+  const [isProgressOpen, setIsProgressOpen] = useState(false);
   const [questLogs, setQuestLogs] = useState([]);
 
   useEffect(() => {
@@ -170,6 +171,14 @@ export default function App() {
   const tier3ReviewedCount = tier3Files.filter(f => f.status !== 'pending').length;
   const isVerdictSubmitted = awardedActions.includes('final-verdict-submitted');
   const isLevel4Complete = tier3Files.length > 0 && tier3ReviewedCount === tier3Files.length && isVerdictSubmitted;
+
+  // Comprehensive Review Progress calculation across all 4 stages:
+  const l1Prog = totalAcCount > 0 ? (completedAcCount / totalAcCount) * 25 : 0;
+  const l2Prog = tier1Files.length > 0 ? (tier1ReviewedCount / tier1Files.length) * 25 : 0;
+  const l3Prog = tier2Files.length > 0 ? (tier2ReviewedCount / tier2Files.length) * 25 : 0;
+  const l4TestProg = tier3Files.length > 0 ? (tier3ReviewedCount / tier3Files.length) * 15 : 0;
+  const l4VerdictProg = isVerdictSubmitted ? 10 : 0;
+  const totalProgressPercent = Math.min(100, Math.round(l1Prog + l2Prog + l3Prog + l4TestProg + l4VerdictProg));
 
   // Sequential Level Unlocking: unlocking happens at milestone completion, but active tab/level NEVER auto-jumps abruptly
   useEffect(() => {
@@ -277,9 +286,11 @@ export default function App() {
         xp={xp} 
         totalFiles={files.length} 
         reviewedCount={reviewedCount} 
+        progressPercent={totalProgressPercent}
         onReset={handleReset}
         onOpenVerdict={() => setIsVerdictOpen(true)}
         onOpenArch={() => setIsArchOpen(true)}
+        onOpenProgress={() => setIsProgressOpen(true)}
       />
 
       {/* Active Mission & Transition Banner */}
@@ -340,8 +351,11 @@ export default function App() {
             {/* Level 1 Complete CTA */}
             {level === 1 && isLevel1Complete && (
               <button
-                onClick={() => setLevel(2)}
-                className="px-3.5 py-2 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 animate-pulse"
+                onClick={() => {
+                  setUnlockedLevel(prev => Math.max(prev, 2));
+                  setLevel(2);
+                }}
+                className="px-3.5 py-2 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 animate-pulse cursor-pointer"
               >
                 <span>Proceed to Level 2: Core Architecture</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -351,8 +365,11 @@ export default function App() {
             {/* Level 2 Complete CTA */}
             {level === 2 && isLevel2Complete && (
               <button
-                onClick={() => setLevel(3)}
-                className="px-3.5 py-2 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 animate-pulse"
+                onClick={() => {
+                  setUnlockedLevel(prev => Math.max(prev, 3));
+                  setLevel(3);
+                }}
+                className="px-3.5 py-2 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 animate-pulse cursor-pointer"
               >
                 <span>Proceed to Level 3: Blast Radius</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -362,8 +379,11 @@ export default function App() {
             {/* Level 3 Complete CTA */}
             {level === 3 && isLevel3Complete && (
               <button
-                onClick={() => setLevel(4)}
-                className="px-3.5 py-2 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 animate-pulse"
+                onClick={() => {
+                  setUnlockedLevel(prev => Math.max(prev, 4));
+                  setLevel(4);
+                }}
+                className="px-3.5 py-2 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 animate-pulse cursor-pointer"
               >
                 <span>Proceed to Level 4: Tests & Verdict</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -513,8 +533,14 @@ export default function App() {
 
       {/* Final Verdict Modal */}
       {isVerdictOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white border border-[#E6E0D5] rounded-xl max-w-lg w-full shadow-2xl p-6">
+        <div 
+          onClick={() => setIsVerdictOpen(false)}
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white border border-[#E6E0D5] rounded-xl max-w-lg w-full shadow-2xl p-6"
+          >
             <div className="flex items-center justify-between border-b border-[#F1ECE4] pb-3 mb-4">
               <div className="flex items-center gap-2">
                 <Award className="w-5 h-5 text-[#D08A29]" />
@@ -593,6 +619,176 @@ export default function App() {
                 className="px-4 py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-sm transition-colors"
               >
                 {awardedActions.includes("final-verdict-submitted") ? "Submit Verdict (Recorded)" : "Submit Verdict (+100 XP)"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Review Progress Breakdown Modal */}
+      {isProgressOpen && (
+        <div 
+          onClick={() => setIsProgressOpen(false)}
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white border border-[#E6E0D5] rounded-xl max-w-lg w-full shadow-2xl p-6"
+          >
+            <div className="flex items-center justify-between border-b border-[#F1ECE4] pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-[#4F6D56]" />
+                <h2 className="text-base font-bold text-[#242220]">Review Progress & Milestones</h2>
+              </div>
+              <button 
+                onClick={() => setIsProgressOpen(false)}
+                className="text-[#6B635A] hover:text-[#242220] p-1 rounded hover:bg-[#F9F6F0]"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Overall Progress Bar */}
+            <div className="bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl p-4 mb-4">
+              <div className="flex justify-between items-center mb-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#6B635A]">
+                  Total Review Completion
+                </span>
+                <span className="text-base font-extrabold text-[#242220]">
+                  {totalProgressPercent}%
+                </span>
+              </div>
+              <div className="w-full bg-[#E6E0D5] h-3 rounded-full overflow-hidden">
+                <div 
+                  className="bg-[#4F6D56] h-full transition-all duration-500 rounded-full"
+                  style={{ width: `${totalProgressPercent}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-[#6B635A] mt-1.5 font-medium">
+                <span>L1: {Math.round(l1Prog)}%</span>
+                <span>L2: {Math.round(l2Prog)}%</span>
+                <span>L3: {Math.round(l3Prog)}%</span>
+                <span>L4: {Math.round(l4TestProg + l4VerdictProg)}%</span>
+              </div>
+            </div>
+
+            {/* Breakdown per level */}
+            <div className="space-y-2.5">
+              {/* Level 1 Item */}
+              <div className={`p-3 rounded-lg border flex items-center justify-between ${
+                isLevel1Complete ? 'bg-[#F4F8F5] border-[#4F6D56]/30' : 'bg-white border-[#E6E0D5]'
+              }`}>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-[#242220]">Level 1: Spec & Intent</span>
+                    {isLevel1Complete && <span className="text-[10px] bg-[#4F6D56] text-white px-1.5 py-0.2 rounded font-bold">Done ✓</span>}
+                  </div>
+                  <div className="text-[11px] text-[#6B635A] mt-0.5">
+                    {completedAcCount}/{totalAcCount} Acceptance Criteria verified
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setLevel(1); setIsProgressOpen(false); }}
+                  className="px-2.5 py-1 text-xs font-semibold rounded bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] transition-colors"
+                >
+                  {level === 1 ? "Active" : "Jump to L1"}
+                </button>
+              </div>
+
+              {/* Level 2 Item */}
+              <div className={`p-3 rounded-lg border flex items-center justify-between ${
+                isLevel2Complete ? 'bg-[#F4F8F5] border-[#4F6D56]/30' : 'bg-white border-[#E6E0D5]'
+              }`}>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-[#242220]">Level 2: Core Architecture</span>
+                    {isLevel2Complete && <span className="text-[10px] bg-[#4F6D56] text-white px-1.5 py-0.2 rounded font-bold">Done ✓</span>}
+                  </div>
+                  <div className="text-[11px] text-[#6B635A] mt-0.5">
+                    {tier1ReviewedCount}/{tier1Files.length} Tier 1 files reviewed • {standards.filter(s => s.completed).length}/{standards.length} Standards audited
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (unlockedLevel >= 2) { setLevel(2); setIsProgressOpen(false); }
+                  }}
+                  disabled={unlockedLevel < 2}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
+                    unlockedLevel < 2 
+                      ? 'bg-[#F1ECE4] text-[#6B635A] cursor-not-allowed opacity-50'
+                      : 'bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220]'
+                  }`}
+                >
+                  {level === 2 ? "Active" : unlockedLevel < 2 ? "Locked" : "Jump to L2"}
+                </button>
+              </div>
+
+              {/* Level 3 Item */}
+              <div className={`p-3 rounded-lg border flex items-center justify-between ${
+                isLevel3Complete ? 'bg-[#F4F8F5] border-[#4F6D56]/30' : 'bg-white border-[#E6E0D5]'
+              }`}>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-[#242220]">Level 3: Blast Radius</span>
+                    {isLevel3Complete && <span className="text-[10px] bg-[#4F6D56] text-white px-1.5 py-0.2 rounded font-bold">Done ✓</span>}
+                  </div>
+                  <div className="text-[11px] text-[#6B635A] mt-0.5">
+                    {tier2ReviewedCount}/{tier2Files.length} Downstream consumer files verified
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (unlockedLevel >= 3) { setLevel(3); setIsProgressOpen(false); }
+                  }}
+                  disabled={unlockedLevel < 3}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
+                    unlockedLevel < 3 
+                      ? 'bg-[#F1ECE4] text-[#6B635A] cursor-not-allowed opacity-50'
+                      : 'bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220]'
+                  }`}
+                >
+                  {level === 3 ? "Active" : unlockedLevel < 3 ? "Locked" : "Jump to L3"}
+                </button>
+              </div>
+
+              {/* Level 4 Item */}
+              <div className={`p-3 rounded-lg border flex items-center justify-between ${
+                isLevel4Complete ? 'bg-[#F4F8F5] border-[#4F6D56]/30' : 'bg-white border-[#E6E0D5]'
+              }`}>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-[#242220]">Level 4: Tests & Final Verdict</span>
+                    {isLevel4Complete && <span className="text-[10px] bg-[#4F6D56] text-white px-1.5 py-0.2 rounded font-bold">Done ✓</span>}
+                  </div>
+                  <div className="text-[11px] text-[#6B635A] mt-0.5">
+                    {tier3ReviewedCount}/{tier3Files.length} Tests verified • Verdict: {isVerdictSubmitted ? "Submitted ✓" : "Pending"}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (unlockedLevel >= 4) { setLevel(4); setIsProgressOpen(false); }
+                  }}
+                  disabled={unlockedLevel < 4}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
+                    unlockedLevel < 4 
+                      ? 'bg-[#F1ECE4] text-[#6B635A] cursor-not-allowed opacity-50'
+                      : 'bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220]'
+                  }`}
+                >
+                  {level === 4 ? "Active" : unlockedLevel < 4 ? "Locked" : "Jump to L4"}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 pt-3 border-t border-[#F1ECE4] flex justify-between items-center">
+              <span className="text-xs text-[#6B635A]">
+                {reviewedCount}/{files.length} Files Reviewed
+              </span>
+              <button
+                onClick={() => setIsProgressOpen(false)}
+                className="px-4 py-2 bg-[#C35832] text-white text-xs font-bold rounded-lg hover:bg-[#A84725] transition-colors"
+              >
+                Close
               </button>
             </div>
           </div>

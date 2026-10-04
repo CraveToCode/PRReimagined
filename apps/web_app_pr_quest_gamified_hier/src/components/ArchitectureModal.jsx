@@ -19,8 +19,14 @@ export default function ArchitectureModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-      <div className="bg-white border border-[#E6E0D5] rounded-xl max-w-2xl w-full shadow-2xl flex flex-col max-h-[85vh]">
+    <div 
+      onClick={onClose}
+      className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+    >
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white border border-[#E6E0D5] rounded-xl max-w-2xl w-full shadow-2xl flex flex-col max-h-[85vh]"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#F1ECE4]">
           <div className="flex items-center gap-2">
