@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Check, AlertTriangle, MessageSquare, Star, ChevronDown, ChevronUp, Search, Info, X } from 'lucide-react';
+import { Check, AlertTriangle, MessageSquare, Star, ChevronDown, ChevronUp, Search, Info, ShieldAlert, Sparkles } from 'lucide-react';
+import FlagCommentModal from './FlagCommentModal';
+import PeerCommentsSection from './PeerCommentsSection';
 
 export default function HierarchicalDiffViewer({ 
-  files, 
+  files = [], 
   selectedSpec, 
   activeFileId, 
   setActiveFileId, 
@@ -11,11 +13,13 @@ export default function HierarchicalDiffViewer({
   onAddXp,
   level = 1,
   onInspectSymbol,
-  onOpenInfo
+  onOpenInfo,
+  currentUser
 }) {
   const [commentInputs, setCommentInputs] = useState({});
   const [expandedFiles, setExpandedFiles] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
+  const [flaggingFile, setFlaggingFile] = useState(null);
 
   const detectSymbol = (content) => {
     if (content.includes("rotateSessionToken")) return "rotateSessionToken";
@@ -32,21 +36,59 @@ export default function HierarchicalDiffViewer({
 
   const sortedFiles = [...filteredFiles].sort((a, b) => b.importance - a.importance);
 
-  const handleStatusChange = (fileId, status) => {
-    onUpdateFileStatus(fileId, status);
-    // Idempotent XP: only granted once per file reviewed
-    onAddXp(40, `Reviewed ${fileId}: marked as ${status}`, `review-file-${fileId}`);
+  const handleApprove = (file) => {
+    onUpdateFileStatus(file.id, 'approved');
+    onAddXp(40, `Reviewed & approved ${file.path}`, `review-file-${file.id}`);
+
+    // Add approval record
+    onAddComment(file.id, {
+      authorId: currentUser?.id || 'alex_staff',
+      authorName: currentUser?.name || 'Reviewer',
+      authorRole: currentUser?.role || 'Code Reviewer',
+      authorAvatar: currentUser?.avatar || '👨‍💻',
+      type: 'approval',
+      text: `Approved by ${currentUser?.name || 'Reviewer'}.`,
+      timestamp: 'Just now'
+    });
   };
 
-  const handleAddCommentSubmit = (fileId, lineNum) => {
+  const handleOpenFlagModal = (file) => {
+    setFlaggingFile(file);
+  };
+
+  const handleConfirmFlag = (commentData) => {
+    if (!flaggingFile) return;
+
+    onAddComment(flaggingFile.id, {
+      authorId: currentUser?.id || 'alex_staff',
+      authorName: currentUser?.name || 'Reviewer',
+      authorRole: currentUser?.role || 'Code Reviewer',
+      authorAvatar: currentUser?.avatar || '👨‍💻',
+      type: 'flag',
+      text: `[${commentData.tag}] ${commentData.text}`,
+      timestamp: 'Just now'
+    });
+
+    onUpdateFileStatus(flaggingFile.id, 'flagged');
+    onAddXp(40, `Flagged ${flaggingFile.path} with required comment`, `flag-file-${flaggingFile.id}`);
+    setFlaggingFile(null);
+  };
+
+  const handleAddInlineComment = (fileId, lineNum) => {
     const text = commentInputs[`${fileId}-${lineNum}`];
     if (!text || !text.trim()) return;
 
     onAddComment(fileId, {
       id: Date.now(),
       line: lineNum,
-      author: "Reviewer (You)",
+      authorId: currentUser?.id || 'alex_staff',
+      authorName: currentUser?.name || 'Reviewer',
+      authorRole: currentUser?.role || 'Code Reviewer',
+      authorAvatar: currentUser?.avatar || '👨‍💻',
+      author: currentUser?.name || 'Reviewer (You)',
+      type: 'note',
       text: text.trim(),
+      timestamp: 'Just now',
       resolved: false
     });
 
@@ -109,7 +151,7 @@ export default function HierarchicalDiffViewer({
           <p className="text-sm text-[#6B635A]">No files match the selected JIRA Spec Filter ({selectedSpec}) or search query.</p>
           <button 
             onClick={() => { setSearchQuery(''); onUpdateFileStatus(null, 'reset'); }}
-            className="mt-3 text-xs text-[#C35832] font-bold hover:underline"
+            className="mt-3 text-xs text-[#C35832] font-bold hover:underline cursor-pointer"
           >
             Clear Filters & Search
           </button>
@@ -120,11 +162,14 @@ export default function HierarchicalDiffViewer({
           const isExpanded = expandedFiles[file.id] !== false;
 
           let tierBadgeColor = "bg-[#FBEFEF] text-[#C35832] border-[#C35832]/20";
-          if (file.tier.includes("Tier 2")) {
+          if (file.tier && file.tier.includes("Tier 2")) {
             tierBadgeColor = "bg-[#FFFDF9] text-[#D08A29] border-[#D08A29]/20";
-          } else if (file.tier.includes("Tier 3")) {
+          } else if (file.tier && file.tier.includes("Tier 3")) {
             tierBadgeColor = "bg-[#F4F8F5] text-[#4F6D56] border-[#4F6D56]/20";
           }
+
+          const fileFlags = (file.comments || []).filter(c => c.type === 'flag');
+          const latestFlag = fileFlags[fileFlags.length - 1];
 
           return (
             <div 
@@ -139,7 +184,7 @@ export default function HierarchicalDiffViewer({
                 <div className="flex items-center gap-2.5 min-w-0">
                   <button 
                     onClick={(e) => { e.stopPropagation(); toggleExpand(file.id); }}
-                    className="text-[#6B635A] hover:text-[#242220]"
+                    className="text-[#6B635A] hover:text-[#242220] cursor-pointer"
                   >
                     {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
@@ -149,164 +194,206 @@ export default function HierarchicalDiffViewer({
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${tierBadgeColor}`}>
                         {file.tier}
                       </span>
+                      {fileFlags.length > 0 && (
+                        <span className="text-[10px] bg-[#FFF8F6] text-[#C35832] border border-[#F7D8D0] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                          <ShieldAlert className="w-3 h-3" />
+                          <span>Flagged by {latestFlag.authorName || 'Peer'}</span>
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-[10px] text-[#6B635A] flex items-center gap-1">
                         <Star className="w-3 h-3 text-[#D08A29] fill-current" /> Importance: {file.importance}/100
                       </span>
-                      <span className="text-[10px] bg-[#F1ECE4] text-[#6B635A] px-1.5 py-0.2 rounded font-mono">
-                        Spec: {file.specTag}
-                      </span>
+                      {file.specTag && (
+                        <span className="text-[10px] bg-[#F1ECE4] text-[#6B635A] px-1.5 py-0.2 rounded font-mono">
+                          Spec: {file.specTag}
+                        </span>
+                      )}
+                      {(file.comments || []).length > 0 && (
+                        <span className="text-[10px] text-[#6B635A] flex items-center gap-1">
+                          <MessageSquare className="w-3 h-3" />
+                          {file.comments.length} {file.comments.length === 1 ? 'comment' : 'comments'}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* File Actions */}
-                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                {/* File Review Actions */}
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                   <button
-                    onClick={() => handleStatusChange(file.id, 'approved')}
-                    className={`px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1 transition-colors ${
+                    onClick={() => handleApprove(file)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
                       file.status === 'approved'
-                        ? 'bg-[#4F6D56] text-white'
-                        : 'bg-[#F4F8F5] text-[#4F6D56] hover:bg-[#4F6D56] hover:text-white border border-[#4F6D56]/20'
+                        ? 'bg-[#4F6D56] text-white shadow-xs'
+                        : 'bg-[#F4F8F5] text-[#4F6D56] hover:bg-[#4F6D56] hover:text-white border border-[#4F6D56]/30'
                     }`}
                   >
-                    <Check className="w-3.5 h-3.5" /> Approve
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Approve</span>
                   </button>
                   <button
-                    onClick={() => handleStatusChange(file.id, 'flagged')}
-                    className={`px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1 transition-colors ${
+                    onClick={() => handleOpenFlagModal(file)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
                       file.status === 'flagged'
-                        ? 'bg-[#C35832] text-white'
-                        : 'bg-[#FBEFEF] text-[#C35832] hover:bg-[#C35832] hover:text-white border border-[#C35832]/20'
+                        ? 'bg-[#C35832] text-white shadow-xs'
+                        : 'bg-[#FBEFEF] text-[#C35832] hover:bg-[#C35832] hover:text-white border border-[#C35832]/30'
                     }`}
+                    title="Flag issue (requires explanation comment for peers)"
                   >
-                    <AlertTriangle className="w-3.5 h-3.5" /> Flag
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>Flag Issue</span>
                   </button>
                 </div>
               </div>
 
-              {/* Diff Content */}
+              {/* Expanded Card Content */}
               {isExpanded && (
-                <div className="overflow-x-auto font-mono text-xs">
-                  {file.diffChunks.map((chunk, chunkIdx) => (
-                    <div key={chunkIdx} className="border-b border-[#F1ECE4] last:border-0">
-                      <div className="bg-[#F1ECE4]/50 text-[#6B635A] px-4 py-1 text-[11px] select-none">
-                        {chunk.header}
-                      </div>
-                      <div className="divide-y divide-[#F1ECE4]/30">
-                        {chunk.lines.map((line, lineIdx) => {
-                          let lineBg = "bg-white";
-                          let linePrefix = " ";
-                          let prefixColor = "text-[#6B635A]";
+                <div className="p-4 space-y-4">
+                  {/* Peer Comments & Discussions */}
+                  <PeerCommentsSection 
+                    file={file}
+                    currentUser={currentUser}
+                    onAddComment={onAddComment}
+                  />
 
-                          if (line.type === 'add') {
-                            lineBg = "bg-[#EBF3EC] border-l-4 border-[#4F6D56]";
-                            linePrefix = "+";
-                            prefixColor = "text-[#4F6D56] font-bold";
-                          } else if (line.type === 'delete') {
-                            lineBg = "bg-[#FBEFEF] border-l-4 border-[#C35832]";
-                            linePrefix = "-";
-                            prefixColor = "text-[#C35832] font-bold";
-                          }
+                  {/* Diff Viewer */}
+                  {file.diffChunks && (
+                    <div className="border border-[#E6E0D5] rounded-xl overflow-hidden font-mono text-xs shadow-inner">
+                      {file.diffChunks.map((chunk, chunkIdx) => (
+                        <div key={chunkIdx} className="border-b border-[#F1ECE4] last:border-0">
+                          <div className="bg-[#F1ECE4]/60 text-[#6B635A] px-4 py-1 text-[11px] select-none font-semibold">
+                            {chunk.header}
+                          </div>
+                          <div className="divide-y divide-[#F1ECE4]/30">
+                            {chunk.lines.map((line, lineIdx) => {
+                              let lineBg = "bg-white";
+                              let linePrefix = " ";
+                              let prefixColor = "text-[#6B635A]";
 
-                          const lineComments = file.comments.filter(c => c.line === lineIdx);
+                              if (line.type === 'add') {
+                                lineBg = "bg-[#EBF3EC] border-l-4 border-[#4F6D56]";
+                                linePrefix = "+";
+                                prefixColor = "text-[#4F6D56] font-bold";
+                              } else if (line.type === 'delete') {
+                                lineBg = "bg-[#FBEFEF] border-l-4 border-[#C35832]";
+                                linePrefix = "-";
+                                prefixColor = "text-[#C35832] font-bold";
+                              }
 
-                          return (
-                            <div key={lineIdx} className="group">
-                              <div className={`flex items-start px-4 py-1 hover:bg-[#F9F6F0] transition-colors ${lineBg}`}>
-                                <span className="w-6 select-none text-right pr-2 text-[10px] text-[#6B635A]/60">
-                                  {lineIdx + 1}
-                                </span>
-                                <span className={`w-4 select-none ${prefixColor} text-center mr-1`}>
-                                  {linePrefix}
-                                </span>
-                                <pre className="flex-1 whitespace-pre-wrap break-all text-[#242220]">
-                                  {line.content}
-                                </pre>
-                                {/* Function inspection only active in Level 3 (Blast Radius) */}
-                                {level === 3 && detectSymbol(line.content) && onInspectSymbol && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onInspectSymbol(detectSymbol(line.content));
-                                    }}
-                                    className="ml-2 px-1.5 py-0.5 rounded bg-[#FFFDF9] border border-[#C35832] text-[#C35832] text-[9px] font-bold font-mono hover:bg-[#C35832] hover:text-white transition-colors cursor-pointer flex items-center gap-1 shadow-2xs flex-shrink-0"
-                                    title={`Inspect ${detectSymbol(line.content)} in Blast Radius Panel`}
-                                  >
-                                    🔍 {detectSymbol(line.content).split('.').pop()}()
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => {
-                                    setCommentInputs(prev => ({
-                                      ...prev,
-                                      [`${file.id}-${lineIdx}`]: prev[`${file.id}-${lineIdx}`] !== undefined ? undefined : ''
-                                    }));
-                                  }}
-                                  className="opacity-0 group-hover:opacity-100 ml-2 text-[#6B635A] hover:text-[#C35832] transition-opacity"
-                                  title="Add inline comment"
-                                >
-                                  <MessageSquare className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                              const lineComments = (file.comments || []).filter(c => c.line === lineIdx);
 
-                              {/* Inline Comments List */}
-                              {lineComments.map((comment) => (
-                                <div key={comment.id} className="bg-[#FFFDF9] border-l-4 border-[#D08A29] ml-10 mr-4 my-1.5 p-2.5 rounded-r-md shadow-xs text-xs">
-                                  <div className="flex items-center justify-between mb-1">
-                                    <span className="font-bold text-[#242220]">{comment.author}</span>
-                                    <span className="text-[10px] text-[#6B635A]">Line {lineIdx + 1}</span>
-                                  </div>
-                                  <p className="text-[#6B635A] leading-relaxed">{comment.text}</p>
-                                </div>
-                              ))}
-
-                              {/* Comment Input Form */}
-                              {commentInputs[`${file.id}-${lineIdx}`] !== undefined && (
-                                <div className="bg-[#FFFDF9] border border-[#E6E0D5] ml-10 mr-4 my-2 p-2.5 rounded-lg shadow-inner">
-                                  <textarea
-                                    rows="2"
-                                    placeholder="Write a constructive review comment..."
-                                    value={commentInputs[`${file.id}-${lineIdx}`]}
-                                    onChange={(e) => setCommentInputs({
-                                      ...commentInputs,
-                                      [`${file.id}-${lineIdx}`]: e.target.value
-                                    })}
-                                    className="w-full bg-white border border-[#E6E0D5] rounded p-2 text-xs focus:outline-none focus:border-[#C35832]"
-                                  />
-                                  <div className="flex justify-end gap-1.5 mt-2">
+                              return (
+                                <div key={lineIdx} className="group">
+                                  <div className={`flex items-start px-4 py-1 hover:bg-[#F9F6F0] transition-colors ${lineBg}`}>
+                                    <span className="w-6 select-none text-right pr-2 text-[10px] text-[#6B635A]/60">
+                                      {lineIdx + 1}
+                                    </span>
+                                    <span className={`w-4 select-none ${prefixColor} text-center mr-1`}>
+                                      {linePrefix}
+                                    </span>
+                                    <pre className="flex-1 whitespace-pre-wrap break-all text-[#242220]">
+                                      {line.content}
+                                    </pre>
+                                    
+                                    {/* Function inspection only active in Level 3 (Blast Radius) */}
+                                    {level === 3 && detectSymbol(line.content) && onInspectSymbol && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onInspectSymbol(detectSymbol(line.content));
+                                        }}
+                                        className="ml-2 px-1.5 py-0.5 rounded bg-[#FFFDF9] border border-[#C35832] text-[#C35832] text-[9px] font-bold font-mono hover:bg-[#C35832] hover:text-white transition-colors cursor-pointer flex items-center gap-1 shadow-2xs flex-shrink-0"
+                                        title={`Inspect ${detectSymbol(line.content)} in Blast Radius Panel`}
+                                      >
+                                        🔍 {detectSymbol(line.content).split('.').pop()}()
+                                      </button>
+                                    )}
                                     <button
-                                      onClick={() => setCommentInputs(prev => {
-                                        const copy = { ...prev };
-                                        delete copy[`${file.id}-${lineIdx}`];
-                                        return copy;
-                                      })}
-                                      className="px-2.5 py-1 bg-white border border-[#E6E0D5] text-[11px] font-medium rounded hover:bg-[#F9F6F0]"
+                                      onClick={() => {
+                                        setCommentInputs(prev => ({
+                                          ...prev,
+                                          [`${file.id}-${lineIdx}`]: prev[`${file.id}-${lineIdx}`] !== undefined ? undefined : ''
+                                        }));
+                                      }}
+                                      className="opacity-0 group-hover:opacity-100 ml-2 text-[#6B635A] hover:text-[#C35832] transition-opacity cursor-pointer"
+                                      title="Add line comment"
                                     >
-                                      Cancel
-                                    </button>
-                                    <button
-                                      onClick={() => handleAddCommentSubmit(file.id, lineIdx)}
-                                      className="px-2.5 py-1 bg-[#C35832] text-white text-[11px] font-bold rounded hover:bg-[#A84725]"
-                                    >
-                                      Post Comment (+15 XP)
+                                      <MessageSquare className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
+
+                                  {/* Line Comments List */}
+                                  {lineComments.map((comment, cIdx) => (
+                                    <div key={comment.id || cIdx} className="bg-[#FFFDF9] border-l-4 border-[#D08A29] ml-10 mr-4 my-1.5 p-2.5 rounded-r-md shadow-xs text-xs">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-sm">{comment.authorAvatar || '👤'}</span>
+                                          <span className="font-bold text-[#242220]">{comment.author || comment.authorName || 'Reviewer'}</span>
+                                        </div>
+                                        <span className="text-[10px] text-[#6B635A]">Line {lineIdx + 1}</span>
+                                      </div>
+                                      <p className="text-[#6B635A] leading-relaxed">{comment.text}</p>
+                                    </div>
+                                  ))}
+
+                                  {/* Inline Comment Input */}
+                                  {commentInputs[`${file.id}-${lineIdx}`] !== undefined && (
+                                    <div className="bg-[#FFFDF9] border border-[#E6E0D5] ml-10 mr-4 my-2 p-2.5 rounded-lg shadow-inner">
+                                      <textarea
+                                        rows="2"
+                                        placeholder="Write an inline review comment..."
+                                        value={commentInputs[`${file.id}-${lineIdx}`]}
+                                        onChange={(e) => setCommentInputs({
+                                          ...commentInputs,
+                                          [`${file.id}-${lineIdx}`]: e.target.value
+                                        })}
+                                        className="w-full bg-white border border-[#E6E0D5] rounded p-2 text-xs focus:outline-none focus:border-[#C35832]"
+                                      />
+                                      <div className="flex justify-end gap-1.5 mt-2">
+                                        <button
+                                          onClick={() => setCommentInputs(prev => {
+                                            const copy = { ...prev };
+                                            delete copy[`${file.id}-${lineIdx}`];
+                                            return copy;
+                                          })}
+                                          className="px-2.5 py-1 bg-white border border-[#E6E0D5] text-[11px] font-medium rounded hover:bg-[#F9F6F0] cursor-pointer"
+                                        >
+                                          Cancel
+                                        </button>
+                                        <button
+                                          onClick={() => handleAddInlineComment(file.id, lineIdx)}
+                                          className="px-2.5 py-1 bg-[#C35832] text-white text-[11px] font-bold rounded hover:bg-[#A84725] cursor-pointer"
+                                        >
+                                          Post Comment (+15 XP)
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))} 
                     </div>
-                  ))} 
+                  )}
                 </div>
               )}
             </div>
           );
         })
       )}
+
+      {/* Flag Comment Mandatory Modal */}
+      <FlagCommentModal
+        isOpen={Boolean(flaggingFile)}
+        onClose={() => setFlaggingFile(null)}
+        onConfirmFlag={handleConfirmFlag}
+        file={flaggingFile}
+        currentUser={currentUser}
+      />
     </div>
   );
 }

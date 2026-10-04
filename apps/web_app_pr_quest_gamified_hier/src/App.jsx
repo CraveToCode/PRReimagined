@@ -1,18 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   initialJiraTicket,
   initialFiles,
   initialReferences,
   defaultArchitecture,
   initialArchitectureMermaid,
-  baselineArchitectureMermaid,
-  proposedArchitectureMermaid,
-  diffArchitectureMermaid,
-  netArchitecturalChanges,
   architectureStandards as initialStandards,
   symbolCatalog as initialSymbolCatalog,
   initialTestSuites
 } from './mockData';
+import { api, PRESET_USERS } from './services/apiClient';
 import QuestHeader from './components/QuestHeader';
 import DynamicLeftPanel from './components/DynamicLeftPanel';
 import HierarchicalDiffViewer from './components/HierarchicalDiffViewer';
@@ -21,81 +18,47 @@ import TestReviewWorkspace from './components/TestReviewWorkspace';
 import ArchitectureModal from './components/ArchitectureModal';
 import ArchitectureDiagramModal from './components/ArchitectureDiagramModal';
 import InfoSidePanel from './components/InfoSidePanel';
-import { Award, CheckCircle, AlertTriangle, Sparkles, ArrowRight } from 'lucide-react';
+import AuthModal from './components/AuthModal';
+import QuerySelectorModal from './components/QuerySelectorModal';
+import { Award, CheckCircle, AlertTriangle, Sparkles, ArrowRight, ShieldAlert, MessageSquare, Send, Check } from 'lucide-react';
 
 export default function App() {
-  const [level, setLevel] = useState(() => {
-    const saved = localStorage.getItem('pr_quest_level');
-    return saved ? parseInt(saved, 10) : 1;
+  // --- Auth & User State ---
+  const [currentUser, setCurrentUser] = useState(() => api.currentUser || PRESET_USERS[0]);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+
+  // --- Query / PR State ---
+  const [currentQueryId, setCurrentQueryId] = useState(() => {
+    const urlParam = new URLSearchParams(window.location.search).get('query');
+    return urlParam || localStorage.getItem('pr_quest_current_query') || 'PR-101';
   });
+  const [currentQueryTitle, setCurrentQueryTitle] = useState('PR #101: Session Token Rotation & Salt Validation');
+  const [queries, setQueries] = useState([]);
+  const [isQuerySelectorOpen, setIsQuerySelectorOpen] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('saved'); // 'saved' | 'syncing' | 'offline'
 
-  const [xp, setXp] = useState(() => {
-    const saved = localStorage.getItem('pr_quest_xp');
-    return saved ? parseInt(saved, 10) : 0;
-  });
+  // --- Review Workspace State ---
+  const [level, setLevel] = useState(1);
+  const [xp, setXp] = useState(0);
+  const [awardedActions, setAwardedActions] = useState([]);
+  const [unlockedLevel, setUnlockedLevel] = useState(1);
 
-  const [awardedActions, setAwardedActions] = useState(() => {
-    const saved = localStorage.getItem('pr_quest_awarded_actions');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  useEffect(() => {
-    localStorage.setItem('pr_quest_awarded_actions', JSON.stringify(awardedActions));
-  }, [awardedActions]);
-
-  const [jiraTicket, setJiraTicket] = useState(() => {
-    const saved = localStorage.getItem('pr_quest_jira');
-    return saved ? JSON.parse(saved) : initialJiraTicket;
-  });
-
-  const [files, setFiles] = useState(() => {
-    const saved = localStorage.getItem('pr_quest_files');
-    return saved ? JSON.parse(saved) : initialFiles;
-  });
-
-  const [references, setReferences] = useState(() => {
-    const saved = localStorage.getItem('pr_quest_references');
-    return saved ? JSON.parse(saved) : initialReferences;
-  });
-
-  const [architectureText, setArchitectureText] = useState(() => {
-    const saved = localStorage.getItem('pr_quest_architecture');
-    return saved ? saved : defaultArchitecture;
-  });
-
-  const [standards, setStandards] = useState(() => {
-    const saved = localStorage.getItem('pr_quest_standards');
-    return saved ? JSON.parse(saved) : initialStandards;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('pr_quest_standards', JSON.stringify(standards));
-  }, [standards]);
-
+  const [jiraTicket, setJiraTicket] = useState(initialJiraTicket);
+  const [files, setFiles] = useState(initialFiles);
+  const [references, setReferences] = useState(initialReferences);
+  const [architectureText, setArchitectureText] = useState(defaultArchitecture);
+  const [standards, setStandards] = useState(initialStandards);
   const [activeSymbolKey, setActiveSymbolKey] = useState("rotateSessionToken");
-  const [auditedSymbols, setAuditedSymbols] = useState(() => {
-    const saved = localStorage.getItem('pr_quest_audited_symbols');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [auditedSymbols, setAuditedSymbols] = useState([]);
+  const [testSuites, setTestSuites] = useState(initialTestSuites);
+  const [verdicts, setVerdicts] = useState([]);
 
-  useEffect(() => {
-    localStorage.setItem('pr_quest_audited_symbols', JSON.stringify(auditedSymbols));
-  }, [auditedSymbols]);
-
-  const [testSuites, setTestSuites] = useState(() => {
-    const saved = localStorage.getItem('pr_quest_tests');
-    return saved ? JSON.parse(saved) : initialTestSuites;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('pr_quest_tests', JSON.stringify(testSuites));
-  }, [testSuites]);
+  // Verdict Modal Form State
+  const [userVerdictType, setUserVerdictType] = useState('approved');
+  const [userVerdictNotes, setUserVerdictNotes] = useState('');
 
   const [selectedSpec, setSelectedSpec] = useState('ALL');
-  const [activeFileId, setActiveFileId] = useState(() => {
-    const saved = localStorage.getItem('pr_quest_active_file_id');
-    return saved || (initialFiles[0]?.id || null);
-  });
+  const [activeFileId, setActiveFileId] = useState(initialFiles[0]?.id || null);
   const [isArchOpen, setIsArchOpen] = useState(false);
   const [isDiagramModalOpen, setIsDiagramModalOpen] = useState(false);
   const [isVerdictOpen, setIsVerdictOpen] = useState(false);
@@ -103,40 +66,368 @@ export default function App() {
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [questLogs, setQuestLogs] = useState([]);
 
-  useEffect(() => {
-    localStorage.setItem('pr_quest_level', level);
-  }, [level]);
+  const isInitialLoad = useRef(true);
 
+  // --- Load Initial Query & Setup ---
   useEffect(() => {
-    localStorage.setItem('pr_quest_xp', xp);
-  }, [xp]);
-
-  useEffect(() => {
-    localStorage.setItem('pr_quest_jira', JSON.stringify(jiraTicket));
-  }, [jiraTicket]);
-
-  useEffect(() => {
-    localStorage.setItem('pr_quest_files', JSON.stringify(files));
-  }, [files]);
-
-  useEffect(() => {
-    localStorage.setItem('pr_quest_references', JSON.stringify(references));
-  }, [references]);
-
-  useEffect(() => {
-    localStorage.setItem('pr_quest_architecture', architectureText);
-  }, [architectureText]);
-
-  useEffect(() => {
-    if (activeFileId) {
-      localStorage.setItem('pr_quest_active_file_id', activeFileId);
+    async function init() {
+      await api.checkHealth();
+      const queryList = await api.listQueries();
+      setQueries(queryList);
+      await loadQueryState(currentQueryId, currentUser);
+      isInitialLoad.current = false;
     }
-  }, [activeFileId]);
+    init();
+  }, []);
 
-  const [unlockedLevel, setUnlockedLevel] = useState(() => {
-    const saved = localStorage.getItem('pr_quest_unlocked_level');
-    return saved ? parseInt(saved, 10) : 1;
-  });
+  // Save current query ID to local storage & URL
+  useEffect(() => {
+    localStorage.setItem('pr_quest_current_query', currentQueryId);
+    const url = new URL(window.location);
+    url.searchParams.set('query', currentQueryId);
+    window.history.replaceState({}, '', url);
+  }, [currentQueryId]);
+
+  // --- Query State Loader ---
+  const loadQueryState = async (queryId, user = currentUser) => {
+    setSyncStatus('syncing');
+    const res = await api.getQueryState(queryId);
+
+    if (res.success && res.data) {
+      const { state, title, userProgress } = res.data;
+      setCurrentQueryTitle(title || `PR #${queryId}`);
+
+      if (state) {
+        if (state.jiraTicket) setJiraTicket(state.jiraTicket);
+        if (state.files && Array.isArray(state.files)) {
+          setFiles(state.files);
+          setActiveFileId(state.files[0]?.id || null);
+        }
+        if (state.standards) setStandards(state.standards);
+        if (state.auditedSymbols) setAuditedSymbols(state.auditedSymbols);
+        if (state.testSuites) setTestSuites(state.testSuites);
+        if (state.verdicts) setVerdicts(state.verdicts);
+      }
+
+      if (userProgress) {
+        setLevel(userProgress.level || 1);
+        setUnlockedLevel(userProgress.unlockedLevel || 1);
+        setXp(userProgress.xp || 0);
+        setAwardedActions(userProgress.awardedActions || []);
+      } else {
+        setLevel(1);
+        setUnlockedLevel(1);
+        setXp(0);
+        setAwardedActions([]);
+      }
+
+      setSyncStatus(res.isOnline ? 'saved' : 'offline');
+    } else {
+      setSyncStatus('offline');
+    }
+  };
+
+  // --- Debounced Auto-Save to SQLite Database ---
+  useEffect(() => {
+    if (isInitialLoad.current) return;
+
+    setSyncStatus('syncing');
+    const timer = setTimeout(async () => {
+      const stateObj = {
+        queryId: currentQueryId,
+        jiraTicket,
+        files,
+        references,
+        standards,
+        auditedSymbols,
+        testSuites,
+        verdicts
+      };
+      const progressObj = {
+        level,
+        unlockedLevel,
+        xp,
+        awardedActions
+      };
+      const res = await api.saveQueryState(currentQueryId, currentQueryTitle, stateObj, progressObj);
+      setSyncStatus(res.isOnline ? 'saved' : 'offline');
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [currentQueryId, currentQueryTitle, jiraTicket, files, standards, auditedSymbols, testSuites, verdicts, level, unlockedLevel, xp, awardedActions]);
+
+  // --- Persona Switch Handler ---
+  const handleSelectPersona = async (personaId) => {
+    const res = await api.login({ personaId });
+    if (res.success && res.user) {
+      setCurrentUser(res.user);
+      setQuestLogs(prev => [
+        { id: Date.now(), text: `👤 Switched reviewer to: ${res.user.name} (${res.user.role})`, timestamp: new Date().toLocaleTimeString() },
+        ...prev
+      ].slice(0, 5));
+      await loadQueryState(currentQueryId, res.user);
+    }
+  };
+
+  const handleCustomLogin = async (username, password) => {
+    const res = await api.login({ username, password });
+    if (res.success && res.user) {
+      setCurrentUser(res.user);
+      await loadQueryState(currentQueryId, res.user);
+    }
+    return res;
+  };
+
+  const handleCustomRegister = async (data) => {
+    const res = await api.register(data);
+    if (res.success && res.user) {
+      setCurrentUser(res.user);
+      await loadQueryState(currentQueryId, res.user);
+    }
+    return res;
+  };
+
+  const handleLogout = () => {
+    api.logout();
+    setCurrentUser(PRESET_USERS[0]);
+    loadQueryState(currentQueryId, PRESET_USERS[0]);
+  };
+
+  // --- Query Switch & Create Handlers ---
+  const handleSelectQuery = async (queryId) => {
+    if (queryId === currentQueryId) return;
+    setCurrentQueryId(queryId);
+    await loadQueryState(queryId, currentUser);
+    const updatedQueries = await api.listQueries();
+    setQueries(updatedQueries);
+  };
+
+  const handleCreateQuery = async (queryId, title) => {
+    const cleanId = queryId.toUpperCase();
+    const cleanTitle = title || `PR #${cleanId}: Feature Review`;
+    const initialPr101 = await api.getQueryState('PR-101');
+    const newState = {
+      ...(initialPr101?.data?.state || {}),
+      queryId: cleanId,
+      title: cleanTitle,
+      verdicts: []
+    };
+
+    await api.saveQueryState(cleanId, cleanTitle, newState, { level: 1, unlockedLevel: 1, xp: 0, awardedActions: [] });
+    setCurrentQueryId(cleanId);
+    setCurrentQueryTitle(cleanTitle);
+    await loadQueryState(cleanId, currentUser);
+    const updatedQueries = await api.listQueries();
+    setQueries(updatedQueries);
+  };
+
+  // --- XP & Progression Handlers ---
+  const handleAddXp = (amount, reason, actionId = null) => {
+    if (actionId) {
+      if (awardedActions.includes(actionId)) {
+        return false;
+      }
+      setAwardedActions(prev => [...prev, actionId]);
+    }
+    setXp(prev => prev + amount);
+    setQuestLogs(prev => [
+      { id: Date.now() + Math.random(), text: `+${amount} XP: ${reason}`, timestamp: new Date().toLocaleTimeString() },
+      ...prev
+    ].slice(0, 5));
+    return true;
+  };
+
+  // Milestone objective calculations
+  const completedAcCount = (jiraTicket.criteria || []).filter(ac => ac.completed).length;
+  const totalAcCount = (jiraTicket.criteria || []).length;
+  const isLevel1Complete = totalAcCount > 0 && completedAcCount === totalAcCount;
+
+  const completedStandardsCount = (standards || []).filter(s => s.completed).length;
+  const totalStandardsCount = (standards || []).length;
+  const isLevel2Complete = totalStandardsCount > 0 && completedStandardsCount === totalStandardsCount;
+
+  const symbolKeys = Object.keys(initialSymbolCatalog);
+  const completedSymbolsCount = (auditedSymbols || []).length;
+  const totalSymbolsCount = symbolKeys.length;
+  const isLevel3Complete = totalSymbolsCount > 0 && completedSymbolsCount === totalSymbolsCount;
+
+  const allFilesReviewed = files.length > 0 && files.every(f => f.status !== 'pending');
+  const reviewedCount = files.filter(f => f.status !== 'pending').length;
+  const approvedCount = files.filter(f => f.status === 'approved').length;
+  const flaggedCount = files.filter(f => f.status === 'flagged').length;
+  const pendingCount = files.filter(f => f.status === 'pending').length;
+
+  const isVerdictSubmitted = awardedActions.includes('final-verdict-submitted') || verdicts.some(v => v.userId === currentUser.id);
+  const isLevel4Complete = allFilesReviewed && isVerdictSubmitted;
+
+  // Sequential level unlock trigger
+  useEffect(() => {
+    let eligibleUnlocked = 1;
+    if (isLevel1Complete) eligibleUnlocked = 2;
+    if (isLevel1Complete && isLevel2Complete) eligibleUnlocked = 3;
+    if (isLevel1Complete && isLevel2Complete && isLevel3Complete) eligibleUnlocked = 4;
+
+    if (eligibleUnlocked > unlockedLevel) {
+      setUnlockedLevel(eligibleUnlocked);
+      handleAddXp(50, `Unlocked Level ${eligibleUnlocked}!`, `unlock-level-${eligibleUnlocked}`);
+      setQuestLogs(prev => [
+        { id: Date.now(), text: `🎉 LEVEL UNLOCKED! Level ${eligibleUnlocked} is now available!`, timestamp: new Date().toLocaleTimeString() },
+        ...prev
+      ].slice(0, 5));
+    }
+  }, [isLevel1Complete, isLevel2Complete, isLevel3Complete, unlockedLevel]);
+
+  // Overall progress percentage
+  const l1Prog = totalAcCount > 0 ? (completedAcCount / totalAcCount) * 25 : 0;
+  const l2Prog = totalStandardsCount > 0 ? (completedStandardsCount / totalStandardsCount) * 25 : 0;
+  const l3Prog = totalSymbolsCount > 0 ? (completedSymbolsCount / totalSymbolsCount) * 25 : 0;
+  const l4FileProg = files.length > 0 ? (reviewedCount / files.length) * 15 : 0;
+  const l4VerdictProg = isVerdictSubmitted ? 10 : 0;
+  const totalProgressPercent = Math.min(100, Math.round(l1Prog + l2Prog + l3Prog + l4FileProg + l4VerdictProg));
+
+  // --- Review Action Handlers ---
+  const handleUpdateFileStatus = (fileId, status) => {
+    if (status === 'reset') {
+      setSelectedSpec('ALL');
+      return;
+    }
+    setFiles(prev => prev.map(f => {
+      if (f.id === fileId) {
+        const nextStatuses = { ...(f.reviewerStatuses || {}) };
+        nextStatuses[currentUser.id] = { status, timestamp: 'Just now' };
+        return { ...f, status, reviewerStatuses: nextStatuses };
+      }
+      return f;
+    }));
+  };
+
+  const handleAddComment = async (fileId, commentPayload) => {
+    const enriched = {
+      id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      authorId: currentUser.id,
+      authorName: currentUser.name,
+      authorRole: currentUser.role,
+      authorAvatar: currentUser.avatar || '👨‍💻',
+      type: commentPayload.type || 'note',
+      text: commentPayload.text,
+      timestamp: 'Just now',
+      ...commentPayload
+    };
+
+    setFiles(prev => prev.map(f => {
+      if (f.id === fileId) {
+        const nextComments = [...(f.comments || []), enriched];
+        const nextStatus = commentPayload.type === 'flag' ? 'flagged' : f.status;
+        const nextStatuses = { ...(f.reviewerStatuses || {}) };
+        if (commentPayload.type === 'flag') {
+          nextStatuses[currentUser.id] = { status: 'flagged', timestamp: 'Just now' };
+        }
+        return { ...f, comments: nextComments, status: nextStatus, reviewerStatuses: nextStatuses };
+      }
+      return f;
+    }));
+
+    // Post to API client
+    api.addComment(currentQueryId, fileId, enriched);
+  };
+
+  const handleToggleStandard = (id) => {
+    setStandards(prev => prev.map(s => {
+      if (s.id === id) {
+        const nextVal = !s.completed;
+        if (nextVal) {
+          handleAddXp(25, `Verified Architecture Standard: ${s.id}`, `verify-std-${s.id}`);
+        }
+        return { ...s, completed: nextVal };
+      }
+      return s;
+    }));
+  };
+
+  const handleToggleSymbolAudit = (symKey) => {
+    const isAudited = auditedSymbols.includes(symKey);
+    if (isAudited) {
+      setAuditedSymbols(prev => prev.filter(k => k !== symKey));
+    } else {
+      setAuditedSymbols(prev => [...prev, symKey]);
+      handleAddXp(25, `Audited Blast Radius for ${symKey}()`, `audit-symbol-${symKey}`);
+    }
+  };
+
+  const handleSelectFileByPath = (path) => {
+    const found = files.find(f => f.path === path);
+    if (found) {
+      setActiveFileId(found.id);
+    }
+  };
+
+  const handleSubmitFinalVerdict = async () => {
+    if (pendingCount > 0) {
+      if (window.confirm(`There are still ${pendingCount} pending code file(s). Would you like to approve all remaining files and submit your verdict?`)) {
+        setFiles(prev => prev.map(f => f.status === 'pending' ? { ...f, status: 'approved' } : f));
+      } else {
+        return;
+      }
+    }
+
+    const verdictEntry = {
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userRole: currentUser.role,
+      userAvatar: currentUser.avatar || '👨‍💻',
+      verdict: userVerdictType,
+      notes: userVerdictNotes || (userVerdictType === 'approved' ? 'All acceptance criteria and code changes approved.' : 'Changes requested by reviewer.'),
+      timestamp: 'Just now'
+    };
+
+    setVerdicts(prev => {
+      const idx = prev.findIndex(v => v.userId === verdictEntry.userId);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = verdictEntry;
+        return copy;
+      }
+      return [...prev, verdictEntry];
+    });
+
+    api.submitVerdict(currentQueryId, verdictEntry);
+    handleAddXp(100, `Submitted Final Review Verdict as ${currentUser.name}`, "final-verdict-submitted");
+
+    setQuestLogs(prev => [
+      { id: Date.now(), text: `🏆 Verdict submitted: ${userVerdictType.toUpperCase()} by ${currentUser.name}`, timestamp: new Date().toLocaleTimeString() },
+      ...prev
+    ].slice(0, 5));
+
+    setIsVerdictOpen(false);
+  };
+
+  const handleReset = () => {
+    if (window.confirm("Are you sure you want to reset your review quest progress for this query?")) {
+      setLevel(1);
+      setUnlockedLevel(1);
+      setXp(0);
+      setAwardedActions([]);
+      setJiraTicket(initialJiraTicket);
+      setFiles(initialFiles);
+      setReferences(initialReferences);
+      setArchitectureText(defaultArchitecture);
+      setStandards(initialStandards);
+      setTestSuites(initialTestSuites);
+      setActiveSymbolKey("rotateSessionToken");
+      setSelectedSpec('ALL');
+      setActiveFileId(initialFiles[0]?.id || null);
+      setAuditedSymbols([]);
+      setVerdicts([]);
+      setQuestLogs([]);
+      api.saveQueryState(currentQueryId, currentQueryTitle, {
+        jiraTicket: initialJiraTicket,
+        files: initialFiles,
+        standards: initialStandards,
+        testSuites: initialTestSuites,
+        verdicts: []
+      }, { level: 1, unlockedLevel: 1, xp: 0, awardedActions: [] });
+    }
+  };
 
   const levelMissions = {
     1: {
@@ -161,150 +452,6 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    localStorage.setItem('pr_quest_level', level);
-  }, [level]);
-
-  useEffect(() => {
-    localStorage.setItem('pr_quest_unlocked_level', unlockedLevel);
-  }, [unlockedLevel]);
-
-  // Milestone objective calculations: Left panel items determine level unlocks
-  // Level 1: Left panel Acceptance Criteria checklist
-  const completedAcCount = jiraTicket.criteria.filter(ac => ac.completed).length;
-  const totalAcCount = jiraTicket.criteria.length;
-  const isLevel1Complete = totalAcCount > 0 && completedAcCount === totalAcCount;
-
-  // Level 2: Left panel Architecture Standard Practice checklist
-  const completedStandardsCount = standards.filter(s => s.completed).length;
-  const totalStandardsCount = standards.length;
-  const isLevel2Complete = totalStandardsCount > 0 && completedStandardsCount === totalStandardsCount;
-
-  // Level 3: Left panel Exported Symbol Blast Radius checklist
-  const symbolKeys = Object.keys(initialSymbolCatalog);
-  const completedSymbolsCount = auditedSymbols.length;
-  const totalSymbolsCount = symbolKeys.length;
-  const isLevel3Complete = totalSymbolsCount > 0 && completedSymbolsCount === totalSymbolsCount;
-
-  // Level 4 (Final Stage): ALL code files must be approved/flagged + verdict submitted
-  const allFilesReviewed = files.length > 0 && files.every(f => f.status !== 'pending');
-  const reviewedCount = files.filter(f => f.status !== 'pending').length;
-  const isVerdictSubmitted = awardedActions.includes('final-verdict-submitted');
-  const isLevel4Complete = allFilesReviewed && isVerdictSubmitted;
-
-  // Comprehensive Review Progress calculation across all 4 stages:
-  const l1Prog = totalAcCount > 0 ? (completedAcCount / totalAcCount) * 25 : 0;
-  const l2Prog = totalStandardsCount > 0 ? (completedStandardsCount / totalStandardsCount) * 25 : 0;
-  const l3Prog = totalSymbolsCount > 0 ? (completedSymbolsCount / totalSymbolsCount) * 25 : 0;
-  const l4FileProg = files.length > 0 ? (reviewedCount / files.length) * 15 : 0;
-  const l4VerdictProg = isVerdictSubmitted ? 10 : 0;
-  const totalProgressPercent = Math.min(100, Math.round(l1Prog + l2Prog + l3Prog + l4FileProg + l4VerdictProg));
-
-  const handleToggleSymbolAudit = (symKey) => {
-    const isAudited = auditedSymbols.includes(symKey);
-    if (isAudited) {
-      setAuditedSymbols(prev => prev.filter(k => k !== symKey));
-    } else {
-      setAuditedSymbols(prev => [...prev, symKey]);
-      handleAddXp(25, `Audited Blast Radius for ${symKey}()`, `audit-symbol-${symKey}`);
-    }
-  };
-
-  // Sequential Level Unlocking: unlocking happens at milestone completion, but active tab/level NEVER auto-jumps abruptly
-  useEffect(() => {
-    let eligibleUnlocked = 1;
-    if (isLevel1Complete) eligibleUnlocked = 2;
-    if (isLevel1Complete && isLevel2Complete) eligibleUnlocked = 3;
-    if (isLevel1Complete && isLevel2Complete && isLevel3Complete) eligibleUnlocked = 4;
-
-    if (eligibleUnlocked > unlockedLevel) {
-      setUnlockedLevel(eligibleUnlocked);
-      handleAddXp(50, `Unlocked Level ${eligibleUnlocked}!`, `unlock-level-${eligibleUnlocked}`);
-      setQuestLogs(prev => [
-        { id: Date.now(), text: `🎉 LEVEL UNLOCKED! Level ${eligibleUnlocked} is now available!`, timestamp: new Date().toLocaleTimeString() },
-        ...prev
-      ].slice(0, 5));
-    }
-  }, [isLevel1Complete, isLevel2Complete, isLevel3Complete, unlockedLevel]);
-
-  const handleAddXp = (amount, reason, actionId = null) => {
-    if (actionId) {
-      if (awardedActions.includes(actionId)) {
-        return false; // Prevent repeated XP farming
-      }
-      setAwardedActions(prev => [...prev, actionId]);
-    }
-    setXp(prev => prev + amount);
-    setQuestLogs(prev => [
-      { id: Date.now() + Math.random(), text: `+${amount} XP: ${reason}`, timestamp: new Date().toLocaleTimeString() },
-      ...prev
-    ].slice(0, 5));
-    return true;
-  };
-
-  const handleUpdateFileStatus = (fileId, status) => {
-    if (status === 'reset') {
-      setSelectedSpec('ALL');
-      return;
-    }
-    setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status } : f));
-  };
-
-  const handleAddComment = (fileId, comment) => {
-    setFiles(prev => prev.map(f => {
-      if (f.id === fileId) {
-        return { ...f, comments: [...f.comments, comment] };
-      }
-      return f;
-    }));
-  };
-
-  const handleSelectFileByPath = (path) => {
-    const found = files.find(f => f.path === path);
-    if (found) {
-      setActiveFileId(found.id);
-    }
-  };
-
-  const handleToggleStandard = (id) => {
-    setStandards(prev => prev.map(s => {
-      if (s.id === id) {
-        const nextVal = !s.completed;
-        if (nextVal) {
-          handleAddXp(25, `Verified Architecture Standard: ${s.id}`, `verify-std-${s.id}`);
-        }
-        return { ...s, completed: nextVal };
-      }
-      return s;
-    }));
-  };
-
-  const handleReset = () => {
-    if (window.confirm("Are you sure you want to reset your review quest progress?")) {
-      setLevel(1);
-      setUnlockedLevel(1);
-      setXp(0);
-      setAwardedActions([]);
-      setJiraTicket(initialJiraTicket);
-      setFiles(initialFiles);
-      setReferences(initialReferences);
-      setArchitectureText(defaultArchitecture);
-      setStandards(initialStandards);
-      setTestSuites(initialTestSuites);
-      setActiveSymbolKey("rotateSessionToken");
-      setSelectedSpec('ALL');
-      setActiveFileId(initialFiles[0]?.id || null);
-      setAuditedSymbols([]);
-      setQuestLogs([]);
-      localStorage.clear();
-    }
-  };
-
-  const activeFile = files.find(f => f.id === activeFileId);
-  const approvedFiles = files.filter(f => f.status === 'approved');
-  const flaggedFiles = files.filter(f => f.status === 'flagged');
-  const pendingFiles = files.filter(f => f.status === 'pending');
-
   return (
     <div className="min-h-screen bg-[#F9F6F0] flex flex-col">
       {/* Header */}
@@ -321,10 +468,16 @@ export default function App() {
         onOpenArch={() => setIsDiagramModalOpen(true)}
         onOpenProgress={() => setIsProgressOpen(true)}
         onOpenInfo={() => setIsInfoOpen(true)}
+        currentUser={currentUser}
+        onOpenAuth={() => setIsAuthOpen(true)}
+        currentQueryId={currentQueryId}
+        currentQueryTitle={currentQueryTitle}
+        onOpenQuerySelector={() => setIsQuerySelectorOpen(true)}
+        syncStatus={syncStatus}
       />
 
       {/* Active Mission & Transition Banner */}
-      <div className="max-w-7xl w-full mx-auto px-4 lg:px-6 pt-4">
+      <div className="max-w-7xl xl:max-w-[1440px] w-full mx-auto px-4 lg:px-6 pt-4">
         <div className="bg-white border-l-4 border-[#C35832] border border-[#E6E0D5] rounded-xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <span className="text-2xl mt-0.5">
@@ -378,7 +531,6 @@ export default function App() {
 
           {/* Interactive Transition Actions */}
           <div className="flex flex-wrap items-center gap-2.5 self-start md:self-center flex-shrink-0">
-            {/* Level 1 Complete CTA */}
             {level === 1 && isLevel1Complete && (
               <button
                 onClick={() => {
@@ -392,7 +544,6 @@ export default function App() {
               </button>
             )}
 
-            {/* Level 2 Complete CTA */}
             {level === 2 && isLevel2Complete && (
               <button
                 onClick={() => {
@@ -406,7 +557,6 @@ export default function App() {
               </button>
             )}
 
-            {/* Level 3 Complete CTA */}
             {level === 3 && isLevel3Complete && (
               <button
                 onClick={() => {
@@ -420,11 +570,10 @@ export default function App() {
               </button>
             )}
 
-            {/* Level 4 Submit CTA */}
             {level === 4 && (
               <button
                 onClick={() => setIsVerdictOpen(true)}
-                className={`px-3.5 py-2 rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 ${
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
                   isVerdictSubmitted
                     ? 'bg-[#4F6D56] text-white'
                     : 'bg-[#C35832] hover:bg-[#A84725] text-white'
@@ -444,27 +593,26 @@ export default function App() {
       {/* Main Workspace: Dynamically adapts per level */}
       <main className="flex-1 max-w-7xl xl:max-w-[1440px] w-full mx-auto p-4 lg:p-6">
         {level === 4 ? (
-          /* Level 4 Specialized Workspace: Roomy Full-Width Test Matrix + Side-by-Side Verification */
           <div className="w-full">
             <TestReviewWorkspace 
               testSuites={testSuites}
+              setTestSuites={setTestSuites}
               files={files}
               onUpdateFileStatus={handleUpdateFileStatus}
-              onOpenVerdict={() => setIsVerdictOpen(true)}
-              isVerdictSubmitted={isVerdictSubmitted}
               onAddXp={handleAddXp}
+              onOpenVerdict={() => setIsVerdictOpen(true)}
             />
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Panel: Level-specific Objective Control (Sticky alongside diff viewer) */}
-            <section className="lg:col-span-3 flex flex-col gap-4 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto pr-0.5">
+            {/* Left Panel: Sticky dynamic criteria */}
+            <section className="lg:col-span-4 lg:sticky lg:top-4 self-start space-y-4">
               <DynamicLeftPanel 
                 level={level}
-                jiraTicket={jiraTicket} 
-                setJiraTicket={setJiraTicket} 
-                selectedSpec={selectedSpec} 
-                setSelectedSpec={setSelectedSpec} 
+                jiraTicket={jiraTicket}
+                setJiraTicket={setJiraTicket}
+                selectedSpec={selectedSpec}
+                setSelectedSpec={setSelectedSpec}
                 architectureStandards={standards}
                 onToggleStandard={handleToggleStandard}
                 mermaidCode={initialArchitectureMermaid}
@@ -484,7 +632,7 @@ export default function App() {
                 }
               />
 
-              {/* Quest Log / XP Feed */}
+              {/* Quest Log Feed */}
               <div className="bg-white border border-[#E6E0D5] rounded-xl p-4 shadow-sm">
                 <h3 className="text-xs font-bold text-[#242220] uppercase tracking-wider mb-2 flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5 text-[#D08A29]" /> Quest Log Feed
@@ -505,7 +653,6 @@ export default function App() {
             </section>
 
             {level === 3 ? (
-              /* Level 3 Blast Radius Workspace: Diff Center + Floating Sticky Function Inspector Right */
               <>
                 <section className="lg:col-span-5">
                   <HierarchicalDiffViewer 
@@ -519,21 +666,21 @@ export default function App() {
                     level={level}
                     onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
                     onOpenInfo={() => setIsInfoOpen(true)}
+                    currentUser={currentUser}
                   />
                 </section>
-
-                <section className="lg:col-span-4">
+                <section className="lg:col-span-3 lg:sticky lg:top-4 self-start">
                   <FunctionInspectorPanel 
                     activeSymbolKey={activeSymbolKey}
-                    symbolCatalog={initialSymbolCatalog}
-                    onSelectSymbol={setActiveSymbolKey}
+                    onAddXp={handleAddXp}
                     onSelectFileByPath={handleSelectFileByPath}
+                    onAuditedChange={handleToggleSymbolAudit}
+                    auditedSymbols={auditedSymbols}
                   />
                 </section>
               </>
             ) : (
-              /* Level 1 & 2 Workspace: Wide, Distraction-Free Diff Viewer */
-              <section className="lg:col-span-9">
+              <section className="lg:col-span-8">
                 <HierarchicalDiffViewer 
                   files={files} 
                   selectedSpec={selectedSpec} 
@@ -543,7 +690,9 @@ export default function App() {
                   onAddComment={handleAddComment} 
                   onAddXp={handleAddXp}
                   level={level}
+                  onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
                   onOpenInfo={() => setIsInfoOpen(true)}
+                  currentUser={currentUser}
                 />
               </section>
             )}
@@ -551,19 +700,16 @@ export default function App() {
         )}
       </main>
 
-      {/* Visual Architecture Diagram & Net Diff Modal */}
-      <ArchitectureDiagramModal 
+      {/* Excalidraw Style Architecture Diagram Modal */}
+      <ArchitectureDiagramModal
         isOpen={isDiagramModalOpen}
         onClose={() => setIsDiagramModalOpen(false)}
-        onSelectNodeFile={handleSelectFileByPath}
-        netChanges={netArchitecturalChanges}
-        baselineMermaid={baselineArchitectureMermaid}
-        proposedMermaid={proposedArchitectureMermaid}
-        diffMermaid={diffArchitectureMermaid}
+        jiraTicket={jiraTicket}
+        architectureStandards={standards}
         onAddXp={handleAddXp}
       />
 
-      {/* Architecture Modal */}
+      {/* Architecture Text Modal */}
       <ArchitectureModal 
         isOpen={isArchOpen} 
         onClose={() => setIsArchOpen(false)} 
@@ -572,120 +718,200 @@ export default function App() {
         onAddXp={handleAddXp}
       />
 
-      {/* Final Verdict Modal */}
+      {/* Distributed Team Verdict & Handoff Modal */}
       {isVerdictOpen && (
         <div 
           onClick={() => setIsVerdictOpen(false)}
-          className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200"
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="bg-white border border-[#E6E0D5] rounded-xl max-w-lg w-full shadow-2xl p-6"
+            className="bg-white border border-[#E6E0D5] rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
           >
-            <div className="flex items-center justify-between border-b border-[#F1ECE4] pb-3 mb-4">
-              <div className="flex items-center gap-2">
-                <Award className="w-5 h-5 text-[#D08A29]" />
-                <h2 className="text-base font-bold text-[#242220]">Submit Final Review Verdict</h2>
+            {/* Modal Header */}
+            <div className="bg-[#FFF8F6] border-b border-[#F7D8D0] p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-[#C35832] text-white rounded-xl shadow-xs">
+                  <Award className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-[#242220]">Team Review Verdict & Sign-Off</h2>
+                  <p className="text-xs text-[#6B635A]">
+                    Target: <span className="font-mono font-bold text-[#C35832]">{currentQueryId}</span>
+                  </p>
+                </div>
               </div>
               <button 
                 onClick={() => setIsVerdictOpen(false)}
-                className="text-[#6B635A] hover:text-[#242220]"
+                className="text-[#6B635A] hover:text-[#242220] p-1.5 rounded-lg hover:bg-black/5 transition-colors cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              {/* File Approvals Summary Cards */}
               <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="bg-[#F4F8F5] border border-[#4F6D56]/20 rounded-lg p-3">
-                  <div className="text-lg font-bold text-[#4F6D56]">{approvedFiles.length}</div>
+                <div className="bg-[#F4F8F5] border border-[#4F6D56]/20 rounded-xl p-3">
+                  <div className="text-xl font-extrabold text-[#4F6D56]">{approvedCount}</div>
                   <div className="text-[10px] text-[#6B635A] uppercase font-bold">Approved</div>
                 </div>
-                <div className="bg-[#FBEFEF] border border-[#C35832]/20 rounded-lg p-3">
-                  <div className="text-lg font-bold text-[#C35832]">{flaggedFiles.length}</div>
+                <div className="bg-[#FFF8F6] border border-[#C35832]/20 rounded-xl p-3">
+                  <div className="text-xl font-extrabold text-[#C35832]">{flaggedCount}</div>
                   <div className="text-[10px] text-[#6B635A] uppercase font-bold">Flagged</div>
                 </div>
-                <div className="bg-[#FFFDF9] border border-[#D08A29]/20 rounded-lg p-3">
-                  <div className="text-lg font-bold text-[#D08A29]">{pendingFiles.length}</div>
+                <div className="bg-[#FFFDF9] border border-[#D08A29]/20 rounded-xl p-3">
+                  <div className="text-xl font-extrabold text-[#D08A29]">{pendingCount}</div>
                   <div className="text-[10px] text-[#6B635A] uppercase font-bold">Pending</div>
                 </div>
               </div>
 
-              {pendingFiles.length > 0 ? (
-                <div className="bg-[#FFFDF9] border border-[#D08A29]/20 rounded-lg p-3 space-y-2">
+              {pendingCount > 0 && (
+                <div className="bg-[#FFFDF9] border border-[#D08A29]/30 rounded-xl p-3 flex items-start justify-between gap-3 text-xs">
                   <div className="flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 text-[#D08A29] mt-0.5 flex-shrink-0" />
-                    <p className="text-xs text-[#6B635A] leading-relaxed">
-                      Final Stage Requirement: You have <span className="font-bold text-[#242220]">{pendingFiles.length} pending files</span> remaining. In the final stage, all code files must be approved or flagged.
-                    </p>
+                    <AlertTriangle className="w-4 h-4 text-[#D08A29] mt-0.5 shrink-0" />
+                    <span className="text-[#6B635A]">
+                      You have <strong className="text-[#242220]">{pendingCount} pending files</strong>. Approve them to complete final review:
+                    </span>
                   </div>
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => {
-                        files.forEach(f => {
-                          if (f.status === 'pending') {
-                            handleUpdateFileStatus(f.id, 'approved');
-                          }
-                        });
-                      }}
-                      className="px-2.5 py-1 bg-[#4F6D56] hover:bg-[#3D5442] text-white text-[11px] font-bold rounded transition-colors cursor-pointer"
-                    >
-                      Approve All Remaining ({pendingFiles.length})
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-[#F4F8F5] border border-[#4F6D56]/20 rounded-lg p-3 flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-[#4F6D56] mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-[#6B635A] leading-relaxed">
-                    Excellent! All {files.length} code files have been approved across review stages. You are ready to submit your final verdict.
-                  </p>
+                  <button
+                    onClick={() => {
+                      setFiles(prev => prev.map(f => f.status === 'pending' ? { ...f, status: 'approved' } : f));
+                    }}
+                    className="px-2.5 py-1 bg-[#4F6D56] hover:bg-[#3D5442] text-white text-[11px] font-bold rounded-lg transition-colors cursor-pointer shrink-0"
+                  >
+                    Approve All
+                  </button>
                 </div>
               )}
 
-              <div>
-                <label className="block text-xs font-bold text-[#6B635A] mb-1">
-                  Review Summary & Feedback for Agent
-                </label>
-                <textarea
-                  rows="4"
-                  className="w-full bg-[#F9F6F0] border border-[#E6E0D5] rounded-lg p-2.5 text-xs focus:outline-none focus:border-[#C35832]"
-                  placeholder="Provide constructive feedback on architectural alignment, test coverage, and code quality..."
-                  defaultValue={`Review completed for ${jiraTicket.id}. Core session management logic looks solid, but please address the fallback storage mechanism in SessionManager.js to ensure production readiness.`}
-                />
+              {/* Distributed Peer Verdicts Section */}
+              <div className="bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl p-3.5 space-y-2.5">
+                <div className="text-xs font-bold uppercase tracking-wider text-[#6B635A] flex items-center justify-between">
+                  <span>Team Review Verdicts ({verdicts.length})</span>
+                  <span className="text-[11px] font-bold text-[#4F6D56]">
+                    {verdicts.filter(v => v.verdict === 'approved').length} of {verdicts.length} Approved
+                  </span>
+                </div>
+                {verdicts.length === 0 ? (
+                  <div className="text-xs text-[#6B635A] italic py-2">
+                    No peer verdicts recorded yet. Submit your verdict below to establish the baseline review.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {verdicts.map((v, idx) => (
+                      <div key={idx} className="bg-white border border-[#E6E0D5] rounded-xl p-3 text-xs shadow-2xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">{v.userAvatar || '👤'}</span>
+                            <div>
+                              <span className="font-bold text-[#242220]">{v.userName}</span>
+                              <span className="text-[10px] text-[#6B635A] ml-1.5 bg-[#F1ECE4] px-1.5 py-0.2 rounded font-medium">
+                                {v.userRole}
+                              </span>
+                            </div>
+                          </div>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            v.verdict === 'approved' 
+                              ? 'bg-[#F4F8F5] text-[#4F6D56] border border-[#4F6D56]/30' 
+                              : v.verdict === 'changes_requested'
+                                ? 'bg-[#FFF8F6] text-[#C35832] border border-[#F7D8D0]'
+                                : 'bg-[#FFFDF9] text-[#D08A29] border border-[#D08A29]/30'
+                          }`}>
+                            {v.verdict === 'approved' ? '✓ APPROVED' : v.verdict === 'changes_requested' ? '⚠️ CHANGES REQUESTED' : '💬 COMMENT'}
+                          </span>
+                        </div>
+                        {v.notes && (
+                          <p className="mt-2 text-[11px] text-[#242220] pl-6 font-mono leading-relaxed bg-[#F9F6F0] p-2 rounded-lg">
+                            "{v.notes}"
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Submit Your Verdict Form */}
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-[#6B635A]">
+                    Your Verdict as: <strong className="text-[#242220]">{currentUser.name}</strong>
+                  </label>
+                  <span className="text-[11px] text-[#6B635A] font-semibold">{currentUser.role}</span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUserVerdictType('approved')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      userVerdictType === 'approved'
+                        ? 'bg-[#4F6D56] text-white border-[#4F6D56] shadow-xs'
+                        : 'bg-white border-[#E6E0D5] text-[#4F6D56] hover:bg-[#F4F8F5]'
+                    }`}
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Approve (LGTM)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserVerdictType('changes_requested')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      userVerdictType === 'changes_requested'
+                        ? 'bg-[#C35832] text-white border-[#C35832] shadow-xs'
+                        : 'bg-white border-[#E6E0D5] text-[#C35832] hover:bg-[#FFF8F6]'
+                    }`}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>Request Changes</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserVerdictType('comment')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      userVerdictType === 'comment'
+                        ? 'bg-[#D08A29] text-white border-[#D08A29] shadow-xs'
+                        : 'bg-white border-[#E6E0D5] text-[#D08A29] hover:bg-[#FFFDF9]'
+                    }`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Comment / Handoff</span>
+                  </button>
+                </div>
+
+                <div>
+                  <textarea
+                    rows="3"
+                    className="w-full bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl p-3 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[#C35832]"
+                    placeholder="Provide constructive review comments, architecture feedback, or handoff notes for your peer reviewers..."
+                    value={userVerdictNotes}
+                    onChange={(e) => setUserVerdictNotes(e.target.value)}
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="mt-5 pt-3 border-t border-[#F1ECE4] flex justify-end gap-2">
-              <button
-                onClick={() => setIsVerdictOpen(false)}
-                className="px-4 py-2 bg-white border border-[#E6E0D5] text-xs font-medium rounded-lg hover:bg-[#F9F6F0]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (pendingFiles.length > 0) {
-                    if (window.confirm(`There are still ${pendingFiles.length} pending code file(s). Would you like to approve all remaining files and submit your verdict?`)) {
-                      files.forEach(f => {
-                        if (f.status === 'pending') handleUpdateFileStatus(f.id, 'approved');
-                      });
-                    } else {
-                      return;
-                    }
-                  }
-                  const awarded = handleAddXp(100, "Submitted Final Review Verdict", "final-verdict-submitted");
-                  if (awarded) {
-                    alert(`🎉 Review submitted successfully! You earned a bonus +100 XP!`);
-                  } else {
-                    alert(`✓ Review verdict updated and recorded!`);
-                  }
-                  setIsVerdictOpen(false);
-                }}
-                className="px-4 py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-sm transition-colors cursor-pointer"
-              >
-                {awardedActions.includes("final-verdict-submitted") ? "Submit Verdict (Recorded)" : "Submit Verdict (+100 XP)"}
-              </button>
+            {/* Modal Footer */}
+            <div className="bg-[#F9F6F0] border-t border-[#E6E0D5] p-4 flex justify-between items-center">
+              <span className="text-xs text-[#6B635A]">
+                Persisted against <strong className="text-[#242220] font-mono">{currentQueryId}</strong>
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsVerdictOpen(false)}
+                  className="px-4 py-2 bg-white border border-[#E6E0D5] text-xs font-medium rounded-xl hover:bg-[#FFFDF9] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmitFinalVerdict}
+                  className="px-5 py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Award className="w-3.5 h-3.5" />
+                  <span>Submit Review Verdict (+100 XP)</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -695,58 +921,41 @@ export default function App() {
       {isProgressOpen && (
         <div 
           onClick={() => setIsProgressOpen(false)}
-          className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in"
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="bg-white border border-[#E6E0D5] rounded-xl max-w-lg w-full shadow-2xl p-6"
+            className="bg-white border border-[#E6E0D5] rounded-2xl max-w-lg w-full shadow-2xl p-6"
           >
             <div className="flex items-center justify-between border-b border-[#F1ECE4] pb-3 mb-4">
               <div className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-[#4F6D56]" />
-                <h2 className="text-base font-bold text-[#242220]">Review Progress & Milestones</h2>
+                <Award className="w-5 h-5 text-[#D08A29]" />
+                <h2 className="text-base font-bold text-[#242220]">Review Progress & Milestone Breakdown</h2>
               </div>
               <button 
                 onClick={() => setIsProgressOpen(false)}
-                className="text-[#6B635A] hover:text-[#242220] p-1 rounded hover:bg-[#F9F6F0]"
+                className="text-[#6B635A] hover:text-[#242220] cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            {/* Overall Progress Bar */}
-            <div className="bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl p-4 mb-4">
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#6B635A]">
-                  Total Review Completion
-                </span>
-                <span className="text-base font-extrabold text-[#242220]">
-                  {totalProgressPercent}%
-                </span>
+            <div className="space-y-3">
+              <div className="bg-[#FFFDF9] border border-[#D08A29]/30 rounded-xl p-3 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-[#242220]">Comprehensive Completion</div>
+                  <div className="text-[11px] text-[#6B635A]">Weighted across all 4 review stages</div>
+                </div>
+                <div className="text-xl font-extrabold text-[#D08A29]">{totalProgressPercent}%</div>
               </div>
-              <div className="w-full bg-[#E6E0D5] h-3 rounded-full overflow-hidden">
-                <div 
-                  className="bg-[#4F6D56] h-full transition-all duration-500 rounded-full"
-                  style={{ width: `${totalProgressPercent}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-[10px] text-[#6B635A] mt-1.5 font-medium">
-                <span>L1: {Math.round(l1Prog)}%</span>
-                <span>L2: {Math.round(l2Prog)}%</span>
-                <span>L3: {Math.round(l3Prog)}%</span>
-                <span>L4: {Math.round(l4TestProg + l4VerdictProg)}%</span>
-              </div>
-            </div>
 
-            {/* Breakdown per level */}
-            <div className="space-y-2.5">
               {/* Level 1 Item */}
               <div className={`p-3 rounded-lg border flex items-center justify-between ${
                 isLevel1Complete ? 'bg-[#F4F8F5] border-[#4F6D56]/30' : 'bg-white border-[#E6E0D5]'
               }`}>
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-[#242220]">Level 1: Spec & Intent</span>
+                    <span className="text-xs font-bold text-[#242220]">Level 1: Spec & Intent Check</span>
                     {isLevel1Complete && <span className="text-[10px] bg-[#4F6D56] text-white px-1.5 py-0.2 rounded font-bold">Done ✓</span>}
                   </div>
                   <div className="text-[11px] text-[#6B635A] mt-0.5">
@@ -755,7 +964,7 @@ export default function App() {
                 </div>
                 <button
                   onClick={() => { setLevel(1); setIsProgressOpen(false); }}
-                  className="px-2.5 py-1 text-xs font-semibold rounded bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] transition-colors"
+                  className="px-2.5 py-1 text-xs font-semibold rounded bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] transition-colors cursor-pointer"
                 >
                   {level === 1 ? "Active" : "Jump to L1"}
                 </button>
@@ -771,7 +980,7 @@ export default function App() {
                     {isLevel2Complete && <span className="text-[10px] bg-[#4F6D56] text-white px-1.5 py-0.2 rounded font-bold">Done ✓</span>}
                   </div>
                   <div className="text-[11px] text-[#6B635A] mt-0.5">
-                    {completedStandardsCount}/{totalStandardsCount} Left-panel Standards audited (Unlocks L3)
+                    {completedStandardsCount}/{totalStandardsCount} Left-panel Standards audited
                   </div>
                 </div>
                 <button
@@ -782,7 +991,7 @@ export default function App() {
                   className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
                     unlockedLevel < 2 
                       ? 'bg-[#F1ECE4] text-[#6B635A] cursor-not-allowed opacity-50'
-                      : 'bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220]'
+                      : 'bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] cursor-pointer'
                   }`}
                 >
                   {level === 2 ? "Active" : unlockedLevel < 2 ? "Locked" : "Jump to L2"}
@@ -799,7 +1008,7 @@ export default function App() {
                     {isLevel3Complete && <span className="text-[10px] bg-[#4F6D56] text-white px-1.5 py-0.2 rounded font-bold">Done ✓</span>}
                   </div>
                   <div className="text-[11px] text-[#6B635A] mt-0.5">
-                    {completedSymbolsCount}/{totalSymbolsCount} Left-panel Symbols audited (Unlocks L4)
+                    {completedSymbolsCount}/{totalSymbolsCount} Left-panel Symbols audited
                   </div>
                 </div>
                 <button
@@ -810,7 +1019,7 @@ export default function App() {
                   className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
                     unlockedLevel < 3 
                       ? 'bg-[#F1ECE4] text-[#6B635A] cursor-not-allowed opacity-50'
-                      : 'bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220]'
+                      : 'bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] cursor-pointer'
                   }`}
                 >
                   {level === 3 ? "Active" : unlockedLevel < 3 ? "Locked" : "Jump to L3"}
@@ -838,7 +1047,7 @@ export default function App() {
                   className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
                     unlockedLevel < 4 
                       ? 'bg-[#F1ECE4] text-[#6B635A] cursor-not-allowed opacity-50'
-                      : 'bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220]'
+                      : 'bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] cursor-pointer'
                   }`}
                 >
                   {level === 4 ? "Active" : unlockedLevel < 4 ? "Locked" : "Jump to L4"}
@@ -852,7 +1061,7 @@ export default function App() {
               </span>
               <button
                 onClick={() => setIsProgressOpen(false)}
-                className="px-4 py-2 bg-[#C35832] text-white text-xs font-bold rounded-lg hover:bg-[#A84725] transition-colors"
+                className="px-4 py-2 bg-[#C35832] text-white text-xs font-bold rounded-lg hover:bg-[#A84725] transition-colors cursor-pointer"
               >
                 Close
               </button>
@@ -860,6 +1069,27 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Auth & Persona Switcher Modal */}
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        currentUser={currentUser}
+        onSelectPersona={handleSelectPersona}
+        onCustomLogin={handleCustomLogin}
+        onCustomRegister={handleCustomRegister}
+        onLogout={handleLogout}
+      />
+
+      {/* Query Selector Modal */}
+      <QuerySelectorModal
+        isOpen={isQuerySelectorOpen}
+        onClose={() => setIsQuerySelectorOpen(false)}
+        currentQueryId={currentQueryId}
+        queries={queries}
+        onSelectQuery={handleSelectQuery}
+        onCreateQuery={handleCreateQuery}
+      />
 
       {/* Global Informational Side Panel / Drawer */}
       <InfoSidePanel 
