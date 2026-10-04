@@ -14,7 +14,8 @@ export default function HierarchicalDiffViewer({
   level = 1,
   onInspectSymbol,
   onOpenInfo,
-  currentUser
+  currentUser,
+  symbolCatalog = null
 }) {
   const [commentInputs, setCommentInputs] = useState({});
   const [expandedFiles, setExpandedFiles] = useState({});
@@ -22,6 +23,13 @@ export default function HierarchicalDiffViewer({
   const [flaggingFile, setFlaggingFile] = useState(null);
 
   const detectSymbol = (content) => {
+    if (!content) return null;
+    // Prefer matches against the active symbol catalog (GitHub PR derived or demo)
+    const catalogKeys = symbolCatalog ? Object.keys(symbolCatalog) : [];
+    for (const key of catalogKeys) {
+      const name = symbolCatalog[key]?.name || key;
+      if (name && content.includes(name)) return key;
+    }
     if (content.includes("rotateSessionToken")) return "rotateSessionToken";
     if (content.includes("interceptors.response.use") || (content.includes("response.use") && content.includes("apiClient"))) return "apiClient.interceptors.response.use";
     if (content.includes("SessionProvider")) return "SessionProvider";

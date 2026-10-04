@@ -20,6 +20,7 @@ import ArchitectureDiagramModal from './components/ArchitectureDiagramModal';
 import InfoSidePanel from './components/InfoSidePanel';
 import AuthModal from './components/AuthModal';
 import QuerySelectorModal from './components/QuerySelectorModal';
+import { buildSymbolCatalogFromFiles, isGithubWorkspaceFiles } from './utils/buildSymbolCatalog';
 import { Award, CheckCircle, AlertTriangle, Sparkles, ArrowRight, ShieldAlert, MessageSquare, Send, Check } from 'lucide-react';
 
 class ErrorBoundary extends React.Component {
@@ -434,6 +435,9 @@ function AppContent() {
       setSelectedSpec('ALL');
       setSyncStatus('saved');
 
+      const derived = buildSymbolCatalogFromFiles(workspace.files || []);
+      setActiveSymbolKey(derived.defaultKey || null);
+
       if (nextRepoDocs.length > 0) {
         setQuestLogs(prev => [
           {
@@ -516,10 +520,23 @@ function AppContent() {
   const totalStandardsCount = (standards || []).length;
   const isLevel2Complete = totalStandardsCount > 0 && completedStandardsCount === totalStandardsCount;
 
-  const symbolKeys = Object.keys(initialSymbolCatalog);
-  const completedSymbolsCount = (auditedSymbols || []).length;
+  const isGithubWorkspace = isGithubWorkspaceFiles(files) || String(currentQueryId).startsWith('GH-');
+  const derivedSymbols = isGithubWorkspace ? buildSymbolCatalogFromFiles(files) : null;
+  const symbolCatalog = derivedSymbols?.catalog && Object.keys(derivedSymbols.catalog).length > 0
+    ? derivedSymbols.catalog
+    : initialSymbolCatalog;
+  const symbolKeys = Object.keys(symbolCatalog || {});
+  const completedSymbolsCount = (auditedSymbols || []).filter((k) => symbolKeys.includes(k)).length;
   const totalSymbolsCount = symbolKeys.length;
   const isLevel3Complete = totalSymbolsCount > 0 && completedSymbolsCount === totalSymbolsCount;
+
+  // Keep Level 3 inspector keyed to a symbol that exists for this workspace
+  useEffect(() => {
+    if (!symbolKeys.length) return;
+    if (!activeSymbolKey || !symbolCatalog[activeSymbolKey]) {
+      setActiveSymbolKey(symbolKeys[0]);
+    }
+  }, [currentQueryId, files, symbolKeys.join('|')]);
 
   const allFilesReviewed = files.length > 0 && files.every(f => f.status !== 'pending');
   const reviewedCount = files.filter(f => f.status !== 'pending').length;
@@ -890,7 +907,7 @@ function AppContent() {
                 architectureStandards={standards}
                 onToggleStandard={handleToggleStandard}
                 mermaidCode={initialArchitectureMermaid}
-                symbolCatalog={initialSymbolCatalog}
+                symbolCatalog={symbolCatalog}
                 activeSymbol={activeSymbolKey}
                 onSelectSymbol={setActiveSymbolKey}
                 onSelectFileByPath={handleSelectFileByPath}
@@ -943,11 +960,13 @@ function AppContent() {
                     onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
                     onOpenInfo={() => setIsInfoOpen(true)}
                     currentUser={currentUser}
+                    symbolCatalog={symbolCatalog}
                   />
                 </section>
                 <section className="lg:col-span-3 lg:sticky lg:top-4 self-start">
                   <FunctionInspectorPanel 
                     activeSymbolKey={activeSymbolKey}
+                    symbolCatalog={symbolCatalog}
                     onAddXp={handleAddXp}
                     onSelectFileByPath={handleSelectFileByPath}
                     onAuditedChange={handleToggleSymbolAudit}
@@ -969,6 +988,7 @@ function AppContent() {
                   onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
                   onOpenInfo={() => setIsInfoOpen(true)}
                   currentUser={currentUser}
+                  symbolCatalog={symbolCatalog}
                 />
               </section>
             )}

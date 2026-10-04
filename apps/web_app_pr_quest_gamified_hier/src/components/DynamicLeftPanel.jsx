@@ -207,10 +207,17 @@ export default function DynamicLeftPanel({
 
         {/* Symbol Tree */}
         <div className="space-y-2 flex-1 overflow-y-auto max-h-[360px] pr-1">
+          {symbols.length === 0 ? (
+            <div className="text-xs text-[#6B635A] bg-[#F9F6F0] border border-[#E6E0D5] rounded-lg p-3">
+              No symbols could be derived from this PR’s diffs yet. Review file changes in the center panel, then mark blast-radius checks as you go.
+            </div>
+          ) : null}
           {symbols.map((symKey) => {
-            const sym = symbolCatalog[symKey];
+            const sym = symbolCatalog?.[symKey];
+            if (!sym) return null;
             const isSelected = activeSymbol === symKey;
             const isAudited = auditedSymbols.includes(symKey);
+            const callerCount = Array.isArray(sym.callers) ? sym.callers.length : 0;
 
             return (
               <div 
@@ -250,7 +257,7 @@ export default function DynamicLeftPanel({
                       ? 'bg-white text-[#4F6D56] border-[#4F6D56]/30 font-semibold' 
                       : 'bg-white border-[#E6E0D5] text-[#6B635A]'
                   }`}>
-                    {sym.callers.length} consumers
+                    {callerCount} consumers
                   </span>
                 </div>
                 <div className="text-[10px] text-[#6B635A] font-mono mt-1 truncate pl-6">
