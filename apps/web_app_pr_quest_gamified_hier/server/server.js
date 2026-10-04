@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { db, PRESET_USERS } from './db.js';
+import { parseRepoInput, listOpenPullRequests, fetchPullRequestWorkspace } from './github.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +19,55 @@ app.use(express.json({ limit: '10mb' }));
 // Health Check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// List open PRs for a public GitHub repository
+app.post('/api/github/open-prs', async (req, res) => {
+  try {
+    const repoInput = req.body?.repoUrl || req.body?.repo || '';
+    const parsed = parseRepoInput(repoInput);
+    if (!parsed) {
+      return res.status(400).json({
+        error: 'Invalid repository URL. Use https://github.com/owner/repo or owner/repo'
+      });
+    }
+
+    const pullRequests = await listOpenPullRequests(parsed.owner, parsed.repo);
+    res.json({
+      success: true,
+      owner: parsed.owner,
+      repo: parsed.repo,
+      repoUrl: `https://github.com/${parsed.owner}/${parsed.repo}`,
+      count: pullRequests.length,
+      pullRequests
+    });
+  } catch (err) {
+    const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 502;
+    res.status(status).json({
+      error: err.message || 'Failed to fetch open pull requests',
+      rateLimitRemaining: err.rateLimitRemaining ?? null
+    });
+  }
+});
+
+// Fetch a single open PR as a review workspace payload (files + diffs)
+app.get('/api/github/pr/:owner/:repo/:number', async (req, res) => {
+  try {
+    const { owner, repo, number } = req.params;
+    const prNumber = Number(number);
+    if (!owner || !repo || !Number.isFinite(prNumber) || prNumber <= 0) {
+      return res.status(400).json({ error: 'owner, repo, and a valid PR number are required' });
+    }
+
+    const workspace = await fetchPullRequestWorkspace(owner, repo, prNumber);
+    res.json({ success: true, ...workspace });
+  } catch (err) {
+    const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 502;
+    res.status(status).json({
+      error: err.message || 'Failed to fetch pull request',
+      rateLimitRemaining: err.rateLimitRemaining ?? null
+    });
+  }
 });
 
 // List Reviewer Personas (for instant 1-click login and demo)
@@ -102,7 +152,11 @@ app.get('/api/state', (req, res) => {
   let queryRecord = db.getQueryState(queryId);
 
   // If new query not yet in DB, create initial placeholder
+  // (Skip auto-seed for GitHub-imported queries — client supplies real PR data)
   if (!queryRecord) {
+    if (String(queryId).startsWith('GH-')) {
+      return res.status(404).json({ error: 'GitHub query not found', queryId });
+    }
     const initialPr101 = db.getQueryState('PR-101');
     const newState = {
       ...(initialPr101 ? initialPr101.state : {}),

@@ -88,6 +88,13 @@ function AppContent() {
   const [isQuerySelectorOpen, setIsQuerySelectorOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState('saved'); // 'saved' | 'syncing' | 'offline'
 
+  // --- GitHub Open PR Browser ---
+  const [githubRepoUrl, setGithubRepoUrl] = useState(() => localStorage.getItem('pr_quest_github_repo') || '');
+  const [githubPullRequests, setGithubPullRequests] = useState([]);
+  const [githubLoading, setGithubLoading] = useState(false);
+  const [githubError, setGithubError] = useState('');
+  const [githubPrLoading, setGithubPrLoading] = useState(false);
+
   // --- Review Workspace State ---
   const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
@@ -125,6 +132,20 @@ function AppContent() {
       await api.checkHealth();
       const queryList = await api.listQueries();
       setQueries(queryList);
+
+      // Rehydrate last GitHub repo open-PR list so header toggle still works
+      const savedRepo = localStorage.getItem('pr_quest_github_repo');
+      const cachedPrs = localStorage.getItem('pr_quest_github_prs');
+      if (savedRepo && cachedPrs) {
+        try {
+          const parsed = JSON.parse(cachedPrs);
+          if (Array.isArray(parsed)) {
+            setGithubRepoUrl(savedRepo);
+            setGithubPullRequests(parsed);
+          }
+        } catch (_) {}
+      }
+
       await loadQueryState(currentQueryId, currentUser);
       isInitialLoad.current = false;
     }
@@ -157,10 +178,13 @@ function AppContent() {
           });
         }
         if (state.files && Array.isArray(state.files)) {
+          const isGithubQuery = String(queryId).startsWith('GH-');
           const safeFiles = state.files.map(f => {
-            const canonical = initialFiles.find(cf => cf.id === f.id || cf.path === f.path);
+            const canonical = isGithubQuery
+              ? null
+              : initialFiles.find(cf => cf.id === f.id || cf.path === f.path);
             return {
-              ...canonical,
+              ...(canonical || {}),
               ...f,
               tier: String(f.tier || canonical?.tier || 'Tier 1: Core Logic'),
               importance: typeof f.importance === 'number' ? f.importance : (canonical?.importance || 80),
@@ -289,6 +313,152 @@ function AppContent() {
     await loadQueryState(cleanId, currentUser);
     const updatedQueries = await api.listQueries();
     setQueries(updatedQueries);
+  };
+
+  const handleLoadGithubRepo = async (repoUrl) => {
+    setGithubLoading(true);
+    setGithubError('');
+    const res = await api.fetchOpenPullRequests(repoUrl);
+    setGithubLoading(false);
+
+    if (!res.success) {
+      setGithubError(res.error || 'Failed to load open pull requests');
+      return false;
+    }
+
+    setGithubRepoUrl(res.repoUrl);
+    localStorage.setItem('pr_quest_github_repo', res.repoUrl);
+    setGithubPullRequests(res.pullRequests || []);
+    localStorage.setItem('pr_quest_github_prs', JSON.stringify(res.pullRequests || []));
+
+    if ((res.pullRequests || []).length === 0) {
+      setGithubError('No open pull requests found for this repository.');
+      return true;
+    }
+
+    setQuestLogs(prev => [
+      {
+        id: Date.now(),
+        text: `🐙 Loaded ${res.pullRequests.length} open PR(s) from ${res.owner}/${res.repo}`,
+        timestamp: new Date().toLocaleTimeString()
+      },
+      ...prev
+    ].slice(0, 5));
+    return true;
+  };
+
+  const applyGithubWorkspace = async (workspace) => {
+    const queryId = workspace.queryId;
+    const title = workspace.title;
+    const existing = await api.getQueryState(queryId);
+
+    const hasSavedReview =
+      existing.success &&
+      existing.data?.state &&
+      (
+        existing.data.state.githubMeta ||
+        (Array.isArray(existing.data.state.files) &&
+          existing.data.state.files.some(f => String(f.id || '').startsWith('gh-')))
+      ) &&
+      (
+        (Array.isArray(existing.data.state.files) &&
+          existing.data.state.files.some(f =>
+            (Array.isArray(f.comments) && f.comments.length > 0) ||
+            f.status !== 'pending'
+          )) ||
+        (existing.data.state.verdicts || []).length > 0 ||
+        (existing.data.userProgress && (
+          (existing.data.userProgress.xp || 0) > 0 ||
+          (existing.data.userProgress.awardedActions || []).length > 0
+        ))
+      );
+
+    // Prefer existing local review progress if the user already worked this PR
+    if (hasSavedReview) {
+      setCurrentQueryId(queryId);
+      setCurrentQueryTitle(existing.data.title || title);
+      await loadQueryState(queryId, currentUser);
+    } else {
+      const newState = {
+        queryId,
+        title,
+        jiraTicket: workspace.jiraTicket,
+        files: workspace.files,
+        references: [],
+        standards: initialStandards.map(s => ({ ...s, completed: false })),
+        auditedSymbols: [],
+        testSuites: initialTestSuites,
+        verdicts: [],
+        githubMeta: workspace.meta || null
+      };
+
+      await api.saveQueryState(queryId, title, newState, {
+        level: 1,
+        unlockedLevel: 1,
+        xp: 0,
+        awardedActions: []
+      });
+
+      setCurrentQueryId(queryId);
+      setCurrentQueryTitle(title);
+      setJiraTicket(workspace.jiraTicket);
+      setFiles(workspace.files);
+      setActiveFileId(workspace.files[0]?.id || null);
+      setStandards(initialStandards.map(s => ({ ...s, completed: false })));
+      setAuditedSymbols([]);
+      setTestSuites(initialTestSuites);
+      setVerdicts([]);
+      setLevel(1);
+      setUnlockedLevel(1);
+      setXp(0);
+      setAwardedActions([]);
+      setSelectedSpec('ALL');
+      setSyncStatus('saved');
+    }
+
+    const updatedQueries = await api.listQueries();
+    setQueries(updatedQueries);
+  };
+
+  const handleSelectGitHubPr = async (pr) => {
+    if (!pr?.owner || !pr?.repo || !pr?.number) return;
+    if (pr.queryId === currentQueryId && !githubPrLoading) return;
+
+    setGithubPrLoading(true);
+    setGithubError('');
+    setSyncStatus('syncing');
+
+    const res = await api.fetchGitHubPullRequest(pr.owner, pr.repo, pr.number);
+    setGithubPrLoading(false);
+
+    if (!res.success) {
+      setGithubError(res.error || `Failed to load PR #${pr.number}`);
+      setSyncStatus('offline');
+      return;
+    }
+
+    await applyGithubWorkspace(res);
+    setQuestLogs(prev => [
+      {
+        id: Date.now(),
+        text: `🔀 Switched to GitHub PR #${pr.number}: ${pr.title}`,
+        timestamp: new Date().toLocaleTimeString()
+      },
+      ...prev
+    ].slice(0, 5));
+  };
+
+  const handleToggleGithubPr = async (direction) => {
+    if (!githubPullRequests.length) return;
+    const idx = githubPullRequests.findIndex(pr => pr.queryId === currentQueryId);
+    const fallback = direction === 'next' ? 0 : githubPullRequests.length - 1;
+    const nextIdx =
+      idx < 0
+        ? fallback
+        : direction === 'next'
+          ? (idx + 1) % githubPullRequests.length
+          : (idx - 1 + githubPullRequests.length) % githubPullRequests.length;
+    await handleSelectGitHubPr(githubPullRequests[nextIdx]);
   };
 
   // --- XP & Progression Handlers ---
@@ -544,6 +714,10 @@ function AppContent() {
         currentQueryTitle={currentQueryTitle}
         onOpenQuerySelector={() => setIsQuerySelectorOpen(true)}
         syncStatus={syncStatus}
+        githubPullRequests={githubPullRequests}
+        githubPrLoading={githubPrLoading}
+        onPrevGithubPr={() => handleToggleGithubPr('prev')}
+        onNextGithubPr={() => handleToggleGithubPr('next')}
       />
 
       {/* Active Mission & Transition Banner */}
@@ -1159,6 +1333,12 @@ function AppContent() {
         queries={queries}
         onSelectQuery={handleSelectQuery}
         onCreateQuery={handleCreateQuery}
+        githubRepoUrl={githubRepoUrl}
+        githubPullRequests={githubPullRequests}
+        githubLoading={githubLoading || githubPrLoading}
+        githubError={githubError}
+        onLoadRepo={handleLoadGithubRepo}
+        onSelectGitHubPr={handleSelectGitHubPr}
       />
 
       {/* Global Informational Side Panel / Drawer */}

@@ -1,5 +1,17 @@
-import React, { useState } from 'react';
-import { GitPullRequest, Plus, Search, Check, X, ShieldAlert, Award, Clock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  GitPullRequest,
+  Plus,
+  Search,
+  Check,
+  X,
+  ShieldAlert,
+  Award,
+  Link2,
+  Loader2,
+  ExternalLink,
+  Github
+} from 'lucide-react';
 
 export default function QuerySelectorModal({
   isOpen,
@@ -7,18 +19,41 @@ export default function QuerySelectorModal({
   currentQueryId,
   queries = [],
   onSelectQuery,
-  onCreateQuery
+  onCreateQuery,
+  githubRepoUrl = '',
+  githubPullRequests = [],
+  githubLoading = false,
+  githubError = '',
+  onLoadRepo,
+  onSelectGitHubPr
 }) {
   const [newQueryId, setNewQueryId] = useState('');
   const [newQueryTitle, setNewQueryTitle] = useState('');
   const [filterText, setFilterText] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [repoInput, setRepoInput] = useState(githubRepoUrl || '');
+  const [activeTab, setActiveTab] = useState(
+    githubPullRequests.length > 0 ? 'github' : 'local'
+  );
+
+  useEffect(() => {
+    if (isOpen) {
+      setRepoInput(githubRepoUrl || '');
+      setActiveTab(githubPullRequests.length > 0 ? 'github' : 'local');
+    }
+  }, [isOpen, githubRepoUrl, githubPullRequests.length]);
 
   if (!isOpen) return null;
 
-  const filteredQueries = queries.filter(q => 
+  const filteredQueries = queries.filter(q =>
     q.query_id.toLowerCase().includes(filterText.toLowerCase()) ||
     (q.title && q.title.toLowerCase().includes(filterText.toLowerCase()))
+  );
+
+  const filteredGithubPrs = githubPullRequests.filter(pr =>
+    String(pr.number).includes(filterText) ||
+    (pr.title && pr.title.toLowerCase().includes(filterText.toLowerCase())) ||
+    (pr.user && pr.user.toLowerCase().includes(filterText.toLowerCase()))
   );
 
   const handleCreate = (e) => {
@@ -33,10 +68,20 @@ export default function QuerySelectorModal({
     onClose();
   };
 
+  const handleLoadRepo = async (e) => {
+    e.preventDefault();
+    if (!repoInput.trim() || !onLoadRepo) return;
+    const ok = await onLoadRepo(repoInput.trim());
+    if (ok) setActiveTab('github');
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
-      <div 
-        className="bg-white rounded-2xl shadow-2xl border border-[#E6E0D5] max-w-lg w-full overflow-hidden flex flex-col max-h-[85vh]"
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl border border-[#E6E0D5] max-w-xl w-full overflow-hidden flex flex-col max-h-[85vh]"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -47,14 +92,88 @@ export default function QuerySelectorModal({
             </div>
             <div>
               <h3 className="text-base font-bold text-[#242220]">Review Queries & Pull Requests</h3>
-              <p className="text-xs text-[#6B635A]">Maintain independent review state per query</p>
+              <p className="text-xs text-[#6B635A]">Load a public GitHub repo or switch local review targets</p>
             </div>
           </div>
-          <button 
+          <button
             onClick={onClose}
             className="text-[#6B635A] hover:text-[#242220] p-1.5 rounded-lg hover:bg-black/5 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* GitHub Repo URL Entry */}
+        <form onSubmit={handleLoadRepo} className="p-4 border-b border-[#E6E0D5] bg-[#FFFDF9] space-y-2">
+          <label className="text-[11px] font-bold uppercase tracking-wider text-[#6B635A] flex items-center gap-1.5">
+            <Github className="w-3.5 h-3.5" />
+            Public repository URL
+          </label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Link2 className="w-4 h-4 text-[#6B635A] absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={repoInput}
+                onChange={e => setRepoInput(e.target.value)}
+                placeholder="https://github.com/owner/repo or owner/repo"
+                className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-[#E6E0D5] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#C35832] font-mono"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!repoInput.trim() || githubLoading}
+              className="px-4 py-2 bg-[#242220] hover:bg-black text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+            >
+              {githubLoading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Loading…</span>
+                </>
+              ) : (
+                <>
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Load Open PRs</span>
+                </>
+              )}
+            </button>
+          </div>
+          {githubError && (
+            <p className="text-[11px] text-[#C35832] bg-[#FFF8F6] border border-[#F7D8D0] rounded-lg px-2.5 py-1.5">
+              {githubError}
+            </p>
+          )}
+          {githubRepoUrl && !githubError && (
+            <p className="text-[11px] text-[#4F6D56]">
+              Loaded <strong>{githubPullRequests.length}</strong> open PR{githubPullRequests.length === 1 ? '' : 's'} from{' '}
+              <span className="font-mono">{githubRepoUrl.replace('https://github.com/', '')}</span>
+            </p>
+          )}
+        </form>
+
+        {/* Tabs */}
+        <div className="px-4 pt-3 flex items-center gap-2 border-b border-[#E6E0D5]">
+          <button
+            type="button"
+            onClick={() => setActiveTab('github')}
+            className={`px-3 py-2 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
+              activeTab === 'github'
+                ? 'border-[#C35832] text-[#C35832]'
+                : 'border-transparent text-[#6B635A] hover:text-[#242220]'
+            }`}
+          >
+            GitHub Open PRs ({githubPullRequests.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('local')}
+            className={`px-3 py-2 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
+              activeTab === 'local'
+                ? 'border-[#C35832] text-[#C35832]'
+                : 'border-transparent text-[#6B635A] hover:text-[#242220]'
+            }`}
+          >
+            Local Queries ({queries.length})
           </button>
         </div>
 
@@ -66,21 +185,23 @@ export default function QuerySelectorModal({
               type="text"
               value={filterText}
               onChange={e => setFilterText(e.target.value)}
-              placeholder="Search PR query by name or ID..."
+              placeholder={activeTab === 'github' ? 'Filter open PRs…' : 'Search PR query by name or ID...'}
               className="w-full pl-9 pr-3 py-1.5 text-xs bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#C35832]"
             />
           </div>
-          <button
-            onClick={() => setIsCreating(!isCreating)}
-            className="px-3 py-1.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>{isCreating ? 'Cancel' : 'New Query'}</span>
-          </button>
+          {activeTab === 'local' && (
+            <button
+              onClick={() => setIsCreating(!isCreating)}
+              className="px-3 py-1.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{isCreating ? 'Cancel' : 'New Query'}</span>
+            </button>
+          )}
         </div>
 
         {/* Create Query Inline Box */}
-        {isCreating && (
+        {activeTab === 'local' && isCreating && (
           <form onSubmit={handleCreate} className="p-4 bg-[#FFF8F6] border-b border-[#F7D8D0] space-y-2.5 animate-in fade-in">
             <div className="text-xs font-bold text-[#C35832]">Start New Review Session Target</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -119,9 +240,83 @@ export default function QuerySelectorModal({
           </form>
         )}
 
-        {/* Query List */}
+        {/* Lists */}
         <div className="p-4 space-y-2.5 overflow-y-auto flex-1">
-          {filteredQueries.length === 0 ? (
+          {activeTab === 'github' ? (
+            filteredGithubPrs.length === 0 ? (
+              <div className="text-center py-8 text-xs text-[#6B635A] space-y-1">
+                {githubPullRequests.length === 0 ? (
+                  <>
+                    <p>Paste a public GitHub repo URL above and click <strong>Load Open PRs</strong>.</p>
+                    <p className="text-[11px]">Example: <span className="font-mono">facebook/react</span></p>
+                  </>
+                ) : (
+                  <p>No open PRs match your filter.</p>
+                )}
+              </div>
+            ) : (
+              filteredGithubPrs.map(pr => {
+                const isSelected = pr.queryId === currentQueryId;
+                return (
+                  <button
+                    key={pr.queryId}
+                    onClick={async () => {
+                      if (onSelectGitHubPr) {
+                        await onSelectGitHubPr(pr);
+                      }
+                      onClose();
+                    }}
+                    className={`w-full p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#FFFDF9] border-[#D08A29] shadow-xs ring-1 ring-[#D08A29]'
+                        : 'bg-white border-[#E6E0D5] hover:bg-[#F9F6F0]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-bold font-mono text-[#C35832]">
+                            #{pr.number}
+                          </span>
+                          {pr.draft && (
+                            <span className="text-[10px] bg-[#F1ECE4] text-[#6B635A] px-1.5 py-0.2 rounded font-bold">
+                              Draft
+                            </span>
+                          )}
+                          {isSelected && (
+                            <span className="text-[10px] bg-[#D08A29] text-white px-1.5 py-0.2 rounded font-bold">
+                              Active PR
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs font-semibold text-[#242220] mt-0.5 line-clamp-2">
+                          {pr.title}
+                        </div>
+                        <div className="text-[11px] text-[#6B635A] mt-1">
+                          @{pr.user} · {pr.head} → {pr.base}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {pr.htmlUrl && (
+                          <a
+                            href={pr.htmlUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="p-1.5 text-[#6B635A] hover:text-[#242220] rounded-lg hover:bg-black/5"
+                            title="Open on GitHub"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                        {isSelected && <Check className="w-5 h-5 text-[#D08A29]" />}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )
+          ) : filteredQueries.length === 0 ? (
             <div className="text-center py-8 text-xs text-[#6B635A]">
               No queries match your search. Click <strong>+ New Query</strong> to create one.
             </div>

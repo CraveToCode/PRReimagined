@@ -286,6 +286,59 @@ class ApiClient {
 
     return { success: true, verdict: payload, isOnline: false };
   }
+
+  /**
+   * Fetch all open PRs for a public GitHub repo URL (or owner/repo).
+   */
+  async fetchOpenPullRequests(repoUrl) {
+    try {
+      const res = await fetch(`${API_BASE}/github/open-prs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoUrl }),
+        signal: AbortSignal.timeout(15000)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const hint = (res.status >= 500 && !data.error)
+          ? 'API server not running. Start it with: npm run server'
+          : (data.error || `Failed to load PRs (${res.status})`);
+        return { success: false, error: hint };
+      }
+      return {
+        success: true,
+        owner: data.owner,
+        repo: data.repo,
+        repoUrl: data.repoUrl,
+        count: data.count,
+        pullRequests: data.pullRequests || []
+      };
+    } catch (_) {
+      return { success: false, error: 'Server unreachable. Start the API server with: npm run server' };
+    }
+  }
+
+  /**
+   * Load a GitHub PR (files + diffs) into a review workspace payload.
+   */
+  async fetchGitHubPullRequest(owner, repo, number) {
+    try {
+      const res = await fetch(
+        `${API_BASE}/github/pr/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(number)}`,
+        { signal: AbortSignal.timeout(20000) }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const hint = (res.status >= 500 && !data.error)
+          ? 'API server not running. Start it with: npm run server'
+          : (data.error || `Failed to load PR #${number}`);
+        return { success: false, error: hint };
+      }
+      return { success: true, ...data };
+    } catch (_) {
+      return { success: false, error: 'Server unreachable. Start the API server with: npm run server' };
+    }
+  }
 }
 
 export const api = new ApiClient();
