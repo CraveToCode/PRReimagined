@@ -60,39 +60,39 @@ export default function SpecNav({
   };
 
   return (
-    <div className="bg-white border border-[#E6E0D5] rounded-xl p-4 shadow-sm flex flex-col h-full">
+    <div className="bg-white border border-[#E6E0D5] rounded-xl p-4 shadow-sm flex flex-col">
       {/* JIRA Ticket Header */}
-      <div className="border-b border-[#F1ECE4] pb-3 mb-4">
+      <div className="border-b border-[#F1ECE4] pb-3 mb-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-[#C35832] bg-[#FBEFEF] px-2 py-0.5 rounded border border-[#C35832]/20">
+          <span className="text-xs font-bold text-[#C35832] bg-[#FBEFEF] px-2 py-0.5 rounded border border-[#C35832]/20 font-mono">
             {jiraTicket.id}
           </span>
           <button 
             onClick={() => setShowAddModal(true)}
-            className="text-xs text-[#C35832] hover:text-[#A84725] font-semibold flex items-center gap-1"
+            className="text-xs text-[#C35832] hover:text-[#A84725] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
           >
             <Plus className="w-3.5 h-3.5" /> Import Story
           </button>
         </div>
-        <h2 className="text-base font-bold text-[#242220] mt-2 leading-snug">
+        <h2 className="text-sm font-bold text-[#242220] mt-2 leading-snug">
           {jiraTicket.title}
         </h2>
-        <p className="text-xs text-[#6B635A] mt-1 line-clamp-3">
+        <p className="text-xs text-[#6B635A] mt-1 line-clamp-2">
           {jiraTicket.description}
         </p>
       </div>
 
       {/* Spec Filter Pills */}
-      <div className="mb-4">
-        <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6B635A] mb-2">
+      <div className="mb-3.5">
+        <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6B635A] mb-1.5">
           🎯 Sliced Diff Filter
         </label>
         <div className="flex flex-wrap gap-1.5">
           <button
             onClick={() => setSelectedSpec('ALL')}
-            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
               selectedSpec === 'ALL'
-                ? 'bg-[#C35832] text-white'
+                ? 'bg-[#C35832] text-white shadow-2xs'
                 : 'bg-[#F9F6F0] text-[#6B635A] hover:bg-[#E6E0D5]'
             }`}
           >
@@ -102,9 +102,9 @@ export default function SpecNav({
             <button
               key={ac.id}
               onClick={() => setSelectedSpec(ac.id)}
-              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                 selectedSpec === ac.id
-                  ? 'bg-[#C35832] text-white'
+                  ? 'bg-[#C35832] text-white shadow-2xs'
                   : 'bg-[#F9F6F0] text-[#6B635A] hover:bg-[#E6E0D5]'
             }`}
             >
@@ -114,29 +114,32 @@ export default function SpecNav({
         </div>
       </div>
 
-      {/* Acceptance Criteria Checklist */}
-      <div className="flex-1 overflow-y-auto min-h-[200px] pr-1">
+      {/* Acceptance Criteria Checklist - Dedicated Independent Scroll */}
+      <div className="flex-1 flex flex-col min-h-0 border-t border-[#F1ECE4] pt-3">
         <div className="flex items-center justify-between mb-2">
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6B635A]">
-            ✅ Acceptance Criteria Checklist
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-[#6B635A] flex items-center gap-1">
+            <span>✅</span> Acceptance Criteria
           </label>
-          <span className="text-[10px] text-[#4F6D56] font-bold">
-            +25 XP each
+          <span className="text-[10px] text-[#4F6D56] font-bold bg-[#F4F8F5] px-2 py-0.5 rounded border border-[#4F6D56]/20">
+            {jiraTicket.criteria.filter(c => c.completed).length}/{jiraTicket.criteria.length} Verified (+25 XP)
           </span>
         </div>
-        <div className="space-y-2">
+
+        {/* Dedicated AC Scrollable Container */}
+        <div className="space-y-2 overflow-y-auto max-h-[280px] lg:max-h-[320px] pr-1">
           {jiraTicket.criteria.map((ac) => (
             <div 
               key={ac.id}
               className={`p-2.5 rounded-lg border transition-all flex items-start gap-2.5 ${
                 ac.completed 
                   ? 'bg-[#F4F8F5] border-[#4F6D56]/30 text-[#4F6D56]' 
-                  : 'bg-[#FFFDF9] border-[#E6E0D5] text-[#242220]'
+                  : 'bg-[#FFFDF9] border-[#E6E0D5] text-[#242220] hover:border-[#C35832]/30'
               }`}
             >
               <button 
                 onClick={() => toggleAc(ac.id)}
-                className="mt-0.5 text-[#C35832] hover:scale-110 transition-transform flex-shrink-0"
+                className="mt-0.5 text-[#C35832] hover:scale-110 transition-transform flex-shrink-0 cursor-pointer"
+                title={ac.completed ? "Mark incomplete" : "Mark AC completed (+25 XP)"}
               >
                 {ac.completed ? (
                   <CheckSquare className="w-4 h-4 text-[#4F6D56]" />
@@ -155,7 +158,7 @@ export default function SpecNav({
         </div>
 
         {/* Quick Add AC */}
-        <form onSubmit={handleAddAc} className="mt-3 pt-3 border-t border-[#F1ECE4] flex gap-1.5">
+        <form onSubmit={handleAddAc} className="mt-2.5 pt-2.5 border-t border-[#F1ECE4] flex gap-1.5">
           <input
             type="text"
             placeholder="Add custom AC..."
@@ -165,23 +168,21 @@ export default function SpecNav({
           />
           <button 
             type="submit"
-            className="bg-[#4F6D56] hover:bg-[#3D5442] text-white px-2.5 py-1 rounded text-xs font-bold transition-colors"
+            className="bg-[#4F6D56] hover:bg-[#3D5442] text-white px-2.5 py-1 rounded text-xs font-bold transition-colors cursor-pointer"
           >
             Add
           </button>
         </form>
       </div>
 
-      {/* Mission Guidelines */}
-      <div className="mt-4 bg-[#F9F6F0] border border-[#E6E0D5] rounded-lg p-3">
-        <h4 className="text-xs font-bold text-[#242220] flex items-center gap-1">
-          <Award className="w-3.5 h-3.5 text-[#D08A29]" /> Mission Guidelines
+      {/* Level 1 Mission Guidelines */}
+      <div className="mt-3 bg-[#F9F6F0] border border-[#E6E0D5] rounded-lg p-2.5">
+        <h4 className="text-[11px] font-bold text-[#242220] flex items-center gap-1">
+          <Award className="w-3.5 h-3.5 text-[#D08A29]" /> Level 1 Checklist Guide
         </h4>
-        <ul className="text-[11px] text-[#6B635A] mt-1.5 space-y-1 list-disc list-inside">
-          <li>Filter diffs by AC to focus your review.</li>
-          <li>Approve or Flag files in the center panel.</li>
-          <li>Check Blast Radius on the right panel.</li>
-          <li>Earn XP to level up and unlock the Final Verdict!</li>
+        <ul className="text-[10px] text-[#6B635A] mt-1 space-y-0.5 list-disc list-inside">
+          <li>Check off each AC as you verify code in the middle panel.</li>
+          <li>Click sliced AC filter pills above to isolate relevant diff hunks.</li>
         </ul>
       </div>
 

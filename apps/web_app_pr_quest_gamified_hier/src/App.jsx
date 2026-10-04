@@ -429,9 +429,9 @@ export default function App() {
             />
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Panel: Level-specific Objective Control */}
-            <section className="lg:col-span-3 flex flex-col gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left Panel: Level-specific Objective Control (Sticky alongside diff viewer) */}
+            <section className="lg:col-span-3 flex flex-col gap-4 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto pr-0.5">
               <DynamicLeftPanel 
                 level={level}
                 jiraTicket={jiraTicket} 
@@ -463,7 +463,7 @@ export default function App() {
                 {questLogs.length === 0 ? (
                   <p className="text-[11px] text-[#6B635A]">Perform review actions to earn XP and level up!</p>
                 ) : (
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
                     {questLogs.map(log => (
                       <div key={log.id} className="text-[11px] text-[#4F6D56] bg-[#F4F8F5] px-2 py-1 rounded border border-[#4F6D56]/10 flex justify-between">
                         <span>{log.text}</span>
