@@ -224,7 +224,8 @@ export default function HierarchicalDiffViewer({
                                 <pre className="flex-1 whitespace-pre-wrap break-all text-[#242220]">
                                   {line.content}
                                 </pre>
-                                {detectSymbol(line.content) && onInspectSymbol && (
+                                {/* Function inspection only active in Level 3 (Blast Radius) */}
+                                {level === 3 && detectSymbol(line.content) && onInspectSymbol && (
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();

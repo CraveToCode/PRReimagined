@@ -517,7 +517,6 @@ export default function App() {
                   onAddComment={handleAddComment} 
                   onAddXp={handleAddXp}
                   level={level}
-                  onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
                   onOpenInfo={() => setIsInfoOpen(true)}
                 />
               </section>
