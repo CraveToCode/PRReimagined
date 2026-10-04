@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Shield, Key, LogIn, UserPlus, Check, X, Sparkles } from 'lucide-react';
+import { User, Check, X, Github, Unlink, Loader2, KeyRound } from 'lucide-react';
 import { PRESET_USERS } from '../services/apiClient';
 
 export default function AuthModal({
@@ -9,7 +9,12 @@ export default function AuthModal({
   onSelectPersona,
   onCustomLogin,
   onCustomRegister,
-  onLogout
+  onLogout,
+  githubStatus = { linked: false, login: null, avatarUrl: null, oauthConfigured: false },
+  onLinkGithubWithToken,
+  onLinkGithubOAuth,
+  onUnlinkGithub,
+  githubBusy = false
 }) {
   const [tab, setTab] = useState('personas'); // 'personas' | 'login' | 'register'
   const [username, setUsername] = useState('');
@@ -17,6 +22,9 @@ export default function AuthModal({
   const [name, setName] = useState('');
   const [role, setRole] = useState('Senior Code Reviewer');
   const [error, setError] = useState('');
+  const [patToken, setPatToken] = useState('');
+  const [patError, setPatError] = useState('');
+  const [showPatForm, setShowPatForm] = useState(false);
 
   if (!isOpen) return null;
 
@@ -39,6 +47,23 @@ export default function AuthModal({
         onClose();
       }
     }
+  };
+
+  const handlePatSubmit = async (e) => {
+    e.preventDefault();
+    setPatError('');
+    if (!patToken.trim()) {
+      setPatError('Paste a GitHub personal access token');
+      return;
+    }
+    if (!onLinkGithubWithToken) return;
+    const res = await onLinkGithubWithToken(patToken.trim());
+    if (res?.error || res?.success === false) {
+      setPatError(res?.error || 'Failed to link token');
+      return;
+    }
+    setPatToken('');
+    setShowPatForm(false);
   };
 
   return (
@@ -67,7 +92,7 @@ export default function AuthModal({
         </div>
 
         {/* Current Active User Banner */}
-        <div className="px-6 pt-5">
+        <div className="px-6 pt-5 space-y-2.5">
           <div className="bg-[#FFFDF9] border border-[#D08A29]/30 rounded-xl p-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <span className="text-3xl">{currentUser?.avatar || '👨‍💻'}</span>
@@ -79,6 +104,103 @@ export default function AuthModal({
             <span className="text-[10px] bg-[#4F6D56]/15 text-[#4F6D56] border border-[#4F6D56]/30 px-2 py-0.5 rounded-full font-bold">
               Active Now
             </span>
+          </div>
+
+          {/* GitHub Link */}
+          <div className="bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl p-3 space-y-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                {githubStatus?.linked && githubStatus.avatarUrl ? (
+                  <img
+                    src={githubStatus.avatarUrl}
+                    alt=""
+                    className="w-8 h-8 rounded-full border border-[#E6E0D5]"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-[#242220] text-white flex items-center justify-center">
+                    <Github className="w-4 h-4" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold text-[#242220]">
+                    {githubStatus?.linked ? `@${githubStatus.login}` : 'GitHub not linked'}
+                  </div>
+                  <div className="text-[10px] text-[#6B635A]">
+                    {githubStatus?.linked
+                      ? 'Comments & verdicts can sync to your PRs'
+                      : 'Paste your PAT — each reviewer links their own account'}
+                  </div>
+                </div>
+              </div>
+              {githubStatus?.linked ? (
+                <button
+                  type="button"
+                  disabled={githubBusy}
+                  onClick={onUnlinkGithub}
+                  className="shrink-0 px-2.5 py-1.5 text-[11px] font-bold border border-[#E6E0D5] bg-white hover:bg-[#FFF8F6] text-[#C35832] rounded-lg cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                >
+                  {githubBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Unlink className="w-3 h-3" />}
+                  Unlink
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={githubBusy}
+                  onClick={() => {
+                    setShowPatForm((v) => !v);
+                    setPatError('');
+                  }}
+                  className="shrink-0 px-2.5 py-1.5 text-[11px] font-bold bg-[#242220] hover:bg-black text-white rounded-lg cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                >
+                  <KeyRound className="w-3 h-3" />
+                  {showPatForm ? 'Cancel' : 'Link GitHub'}
+                </button>
+              )}
+            </div>
+
+            {!githubStatus?.linked && showPatForm && (
+              <form onSubmit={handlePatSubmit} className="space-y-2 pt-1 border-t border-[#E6E0D5]">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#6B635A]">
+                  Personal access token
+                </label>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={patToken}
+                  onChange={(e) => setPatToken(e.target.value)}
+                  placeholder="ghp_… or github_pat_…"
+                  className="w-full text-xs p-2.5 bg-white border border-[#E6E0D5] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#C35832] font-mono"
+                />
+                <p className="text-[10px] text-[#6B635A] leading-relaxed">
+                  Create at GitHub → Settings → Developer settings → Personal access tokens.
+                  Needs <span className="font-mono">repo</span> (or <span className="font-mono">public_repo</span> for public only).
+                  Token is stored on this server only — never shown back.
+                </p>
+                {patError && (
+                  <p className="text-[11px] text-[#C35832] bg-[#FFF8F6] border border-[#F7D8D0] rounded-lg px-2 py-1.5">
+                    {patError}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  disabled={githubBusy || !patToken.trim()}
+                  className="w-full py-2 text-[11px] font-bold bg-[#4F6D56] hover:bg-[#3f5845] text-white rounded-xl cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {githubBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Github className="w-3.5 h-3.5" />}
+                  Save token & link
+                </button>
+                {githubStatus?.oauthConfigured && onLinkGithubOAuth && (
+                  <button
+                    type="button"
+                    disabled={githubBusy}
+                    onClick={onLinkGithubOAuth}
+                    className="w-full py-1.5 text-[11px] font-medium text-[#6B635A] hover:text-[#242220] cursor-pointer"
+                  >
+                    Or continue with GitHub OAuth →
+                  </button>
+                )}
+              </form>
+            )}
           </div>
         </div>
 

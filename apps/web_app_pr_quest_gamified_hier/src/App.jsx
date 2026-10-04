@@ -20,6 +20,7 @@ import ArchitectureDiagramModal from './components/ArchitectureDiagramModal';
 import InfoSidePanel from './components/InfoSidePanel';
 import AuthModal from './components/AuthModal';
 import QuerySelectorModal from './components/QuerySelectorModal';
+import { buildSymbolCatalogFromFiles, isGithubWorkspaceFiles } from './utils/buildSymbolCatalog';
 import { Award, CheckCircle, AlertTriangle, Sparkles, ArrowRight, ShieldAlert, MessageSquare, Send, Check } from 'lucide-react';
 
 class ErrorBoundary extends React.Component {
@@ -88,6 +89,18 @@ function AppContent() {
   const [isQuerySelectorOpen, setIsQuerySelectorOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState('saved'); // 'saved' | 'syncing' | 'offline'
 
+  // --- GitHub Open PR Browser + OAuth ---
+  const [githubRepoUrl, setGithubRepoUrl] = useState(() => localStorage.getItem('pr_quest_github_repo') || '');
+  const [githubPullRequests, setGithubPullRequests] = useState([]);
+  const [githubLoading, setGithubLoading] = useState(false);
+  const [githubError, setGithubError] = useState('');
+  const [githubPrLoading, setGithubPrLoading] = useState(false);
+  const [githubStatus, setGithubStatus] = useState({ linked: false, login: null, avatarUrl: null, configured: false });
+  const [githubBusy, setGithubBusy] = useState(false);
+  const [myRepos, setMyRepos] = useState([]);
+  const [myReposLoading, setMyReposLoading] = useState(false);
+  const [githubMeta, setGithubMeta] = useState(null);
+
   // --- Review Workspace State ---
   const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
@@ -98,6 +111,7 @@ function AppContent() {
   const [files, setFiles] = useState(initialFiles);
   const [references, setReferences] = useState(initialReferences);
   const [architectureText, setArchitectureText] = useState(defaultArchitecture);
+  const [repoDocs, setRepoDocs] = useState([]);
   const [standards, setStandards] = useState(initialStandards);
   const [activeSymbolKey, setActiveSymbolKey] = useState("rotateSessionToken");
   const [auditedSymbols, setAuditedSymbols] = useState([]);
@@ -119,12 +133,75 @@ function AppContent() {
 
   const isInitialLoad = useRef(true);
 
+  const refreshGithubStatus = async () => {
+    const status = await api.getGithubStatus();
+    setGithubStatus(status);
+    return status;
+  };
+
+  const pushQuestLog = (text) => {
+    setQuestLogs(prev => [
+      { id: Date.now() + Math.random(), text, timestamp: new Date().toLocaleTimeString() },
+      ...prev
+    ].slice(0, 8));
+  };
+
+  const logGithubSync = (githubSync, kind = 'comment') => {
+    if (!githubSync || !githubSync.attempted) return;
+    if (githubSync.synced) {
+      pushQuestLog(
+        kind === 'verdict'
+          ? `Synced verdict to GitHub (${githubSync.event || 'review'})`
+          : `Synced ${kind} to GitHub`
+      );
+    } else if (githubSync.error) {
+      pushQuestLog(`GitHub sync failed: ${githubSync.error}`);
+    }
+  };
+
   // --- Load Initial Query & Setup ---
   useEffect(() => {
     async function init() {
       await api.checkHealth();
       const queryList = await api.listQueries();
       setQueries(queryList);
+
+      // Rehydrate last GitHub repo open-PR list so header toggle still works
+      const savedRepo = localStorage.getItem('pr_quest_github_repo');
+      const cachedPrs = localStorage.getItem('pr_quest_github_prs');
+      if (savedRepo && cachedPrs) {
+        try {
+          const parsed = JSON.parse(cachedPrs);
+          if (Array.isArray(parsed)) {
+            setGithubRepoUrl(savedRepo);
+            setGithubPullRequests(parsed);
+          }
+        } catch (_) {}
+      }
+
+      const status = await refreshGithubStatus();
+
+      // OAuth callback landing: ?github=linked | error
+      const params = new URLSearchParams(window.location.search);
+      const githubParam = params.get('github');
+      if (githubParam === 'linked') {
+        pushQuestLog(`GitHub linked as @${status.login || 'user'}`);
+        params.delete('github');
+        params.delete('message');
+        const next = new URL(window.location.href);
+        next.search = params.toString();
+        window.history.replaceState({}, '', next);
+        setIsAuthOpen(true);
+      } else if (githubParam === 'error') {
+        const msg = params.get('message') || 'GitHub link failed';
+        pushQuestLog(`GitHub link error: ${msg}`);
+        params.delete('github');
+        params.delete('message');
+        const next = new URL(window.location.href);
+        next.search = params.toString();
+        window.history.replaceState({}, '', next);
+      }
+
       await loadQueryState(currentQueryId, currentUser);
       isInitialLoad.current = false;
     }
@@ -157,10 +234,13 @@ function AppContent() {
           });
         }
         if (state.files && Array.isArray(state.files)) {
+          const isGithubQuery = String(queryId).startsWith('GH-');
           const safeFiles = state.files.map(f => {
-            const canonical = initialFiles.find(cf => cf.id === f.id || cf.path === f.path);
+            const canonical = isGithubQuery
+              ? null
+              : initialFiles.find(cf => cf.id === f.id || cf.path === f.path);
             return {
-              ...canonical,
+              ...(canonical || {}),
               ...f,
               tier: String(f.tier || canonical?.tier || 'Tier 1: Core Logic'),
               importance: typeof f.importance === 'number' ? f.importance : (canonical?.importance || 80),
@@ -174,9 +254,14 @@ function AppContent() {
           setActiveFileId(safeFiles[0]?.id || null);
         }
         if (state.standards && Array.isArray(state.standards)) setStandards(state.standards);
+        if (typeof state.architectureText === 'string') setArchitectureText(state.architectureText);
+        if (Array.isArray(state.repoDocs)) setRepoDocs(state.repoDocs);
         if (state.auditedSymbols && Array.isArray(state.auditedSymbols)) setAuditedSymbols(state.auditedSymbols);
         if (state.testSuites && Array.isArray(state.testSuites)) setTestSuites(state.testSuites);
         if (state.verdicts && Array.isArray(state.verdicts)) setVerdicts(state.verdicts);
+        if (state.githubMeta) setGithubMeta(state.githubMeta);
+        else if (String(queryId).startsWith('GH-')) setGithubMeta(state.meta || null);
+        else setGithubMeta(null);
       }
 
       if (userProgress) {
@@ -209,9 +294,12 @@ function AppContent() {
         files,
         references,
         standards,
+        architectureText,
+        repoDocs,
         auditedSymbols,
         testSuites,
-        verdicts
+        verdicts,
+        githubMeta
       };
       const progressObj = {
         level,
@@ -224,18 +312,17 @@ function AppContent() {
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [currentQueryId, currentQueryTitle, jiraTicket, files, standards, auditedSymbols, testSuites, verdicts, level, unlockedLevel, xp, awardedActions]);
+  }, [currentQueryId, currentQueryTitle, jiraTicket, files, standards, architectureText, repoDocs, auditedSymbols, testSuites, verdicts, githubMeta, level, unlockedLevel, xp, awardedActions]);
 
   // --- Persona Switch Handler ---
   const handleSelectPersona = async (personaId) => {
     const res = await api.login({ personaId });
     if (res.success && res.user) {
       setCurrentUser(res.user);
-      setQuestLogs(prev => [
-        { id: Date.now(), text: `👤 Switched reviewer to: ${res.user.name} (${res.user.role})`, timestamp: new Date().toLocaleTimeString() },
-        ...prev
-      ].slice(0, 5));
+      pushQuestLog(`Switched reviewer to: ${res.user.name} (${res.user.role})`);
       await loadQueryState(currentQueryId, res.user);
+      await refreshGithubStatus();
+      setMyRepos([]);
     }
   };
 
@@ -244,6 +331,8 @@ function AppContent() {
     if (res.success && res.user) {
       setCurrentUser(res.user);
       await loadQueryState(currentQueryId, res.user);
+      await refreshGithubStatus();
+      setMyRepos([]);
     }
     return res;
   };
@@ -253,14 +342,71 @@ function AppContent() {
     if (res.success && res.user) {
       setCurrentUser(res.user);
       await loadQueryState(currentQueryId, res.user);
+      await refreshGithubStatus();
+      setMyRepos([]);
     }
     return res;
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     api.logout();
     setCurrentUser(PRESET_USERS[0]);
-    loadQueryState(currentQueryId, PRESET_USERS[0]);
+    await loadQueryState(currentQueryId, PRESET_USERS[0]);
+    await refreshGithubStatus();
+    setMyRepos([]);
+  };
+
+  const handleLinkGithubWithToken = async (token) => {
+    setGithubBusy(true);
+    const res = await api.linkGithubWithToken(token);
+    setGithubBusy(false);
+    if (res.success) {
+      await refreshGithubStatus();
+      pushQuestLog(`GitHub linked as @${res.login || 'user'} (PAT)`);
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Failed to link token' };
+  };
+
+  const handleLinkGithubOAuth = () => {
+    api.startGithubOAuth();
+  };
+
+  const handleUnlinkGithub = async () => {
+    setGithubBusy(true);
+    const res = await api.unlinkGithub();
+    setGithubBusy(false);
+    if (res.success) {
+      setGithubStatus((prev) => ({
+        linked: false,
+        login: null,
+        avatarUrl: null,
+        configured: true,
+        oauthConfigured: Boolean(prev?.oauthConfigured),
+        patLinking: true
+      }));
+      setMyRepos([]);
+      pushQuestLog('GitHub account unlinked');
+    } else {
+      pushQuestLog(`Unlink failed: ${res.error || 'unknown error'}`);
+    }
+  };
+
+  const handleRefreshMyRepos = async () => {
+    if (!githubStatus.linked) return;
+    setMyReposLoading(true);
+    const res = await api.listGithubRepos();
+    setMyReposLoading(false);
+    if (res.success) {
+      setMyRepos(res.repos || []);
+    } else {
+      setGithubError(res.error || 'Failed to load your repositories');
+    }
+  };
+
+  const handleSelectMyRepo = async (fullName) => {
+    if (!fullName) return false;
+    return handleLoadGithubRepo(fullName);
   };
 
   // --- Query Switch & Create Handlers ---
@@ -291,6 +437,176 @@ function AppContent() {
     setQueries(updatedQueries);
   };
 
+  const handleLoadGithubRepo = async (repoUrl) => {
+    setGithubLoading(true);
+    setGithubError('');
+    const res = await api.fetchOpenPullRequests(repoUrl);
+    setGithubLoading(false);
+
+    if (!res.success) {
+      setGithubError(res.error || 'Failed to load open pull requests');
+      return false;
+    }
+
+    setGithubRepoUrl(res.repoUrl);
+    localStorage.setItem('pr_quest_github_repo', res.repoUrl);
+    setGithubPullRequests(res.pullRequests || []);
+    localStorage.setItem('pr_quest_github_prs', JSON.stringify(res.pullRequests || []));
+
+    if ((res.pullRequests || []).length === 0) {
+      setGithubError('No open pull requests found for this repository.');
+      return true;
+    }
+
+    setQuestLogs(prev => [
+      {
+        id: Date.now(),
+        text: `🐙 Loaded ${res.pullRequests.length} open PR(s) from ${res.owner}/${res.repo}`,
+        timestamp: new Date().toLocaleTimeString()
+      },
+      ...prev
+    ].slice(0, 5));
+    return true;
+  };
+
+  const applyGithubWorkspace = async (workspace) => {
+    const queryId = workspace.queryId;
+    const title = workspace.title;
+    const existing = await api.getQueryState(queryId);
+
+    const hasSavedReview =
+      existing.success &&
+      existing.data?.state &&
+      (
+        existing.data.state.githubMeta ||
+        (Array.isArray(existing.data.state.files) &&
+          existing.data.state.files.some(f => String(f.id || '').startsWith('gh-')))
+      ) &&
+      (
+        (Array.isArray(existing.data.state.files) &&
+          existing.data.state.files.some(f =>
+            (Array.isArray(f.comments) && f.comments.length > 0) ||
+            f.status !== 'pending'
+          )) ||
+        (existing.data.state.verdicts || []).length > 0 ||
+        (existing.data.userProgress && (
+          (existing.data.userProgress.xp || 0) > 0 ||
+          (existing.data.userProgress.awardedActions || []).length > 0
+        ))
+      );
+
+    // Prefer existing local review progress if the user already worked this PR
+    if (hasSavedReview) {
+      setCurrentQueryId(queryId);
+      setCurrentQueryTitle(existing.data.title || title);
+      await loadQueryState(queryId, currentUser);
+    } else {
+      const nextStandards =
+        Array.isArray(workspace.standards) && workspace.standards.length > 0
+          ? workspace.standards.map(s => ({ ...s, completed: false }))
+          : initialStandards.map(s => ({ ...s, completed: false }));
+      const nextArchitectureText =
+        typeof workspace.architectureText === 'string' && workspace.architectureText.trim()
+          ? workspace.architectureText
+          : defaultArchitecture;
+      const nextRepoDocs = Array.isArray(workspace.repoDocs) ? workspace.repoDocs : [];
+
+      const newState = {
+        queryId,
+        title,
+        jiraTicket: workspace.jiraTicket,
+        files: workspace.files,
+        references: [],
+        standards: nextStandards,
+        architectureText: nextArchitectureText,
+        repoDocs: nextRepoDocs,
+        auditedSymbols: [],
+        testSuites: initialTestSuites,
+        verdicts: [],
+        githubMeta: workspace.meta || null
+      };
+
+      await api.saveQueryState(queryId, title, newState, {
+        level: 1,
+        unlockedLevel: 1,
+        xp: 0,
+        awardedActions: []
+      });
+
+      setCurrentQueryId(queryId);
+      setCurrentQueryTitle(title);
+      setJiraTicket(workspace.jiraTicket);
+      setFiles(workspace.files);
+      setActiveFileId(workspace.files[0]?.id || null);
+      setStandards(nextStandards);
+      setArchitectureText(nextArchitectureText);
+      setRepoDocs(nextRepoDocs);
+      setAuditedSymbols([]);
+      setTestSuites(initialTestSuites);
+      setVerdicts([]);
+      setGithubMeta(workspace.meta || null);
+      setLevel(1);
+      setUnlockedLevel(1);
+      setXp(0);
+      setAwardedActions([]);
+      setSelectedSpec('ALL');
+      setSyncStatus('saved');
+
+      const derived = buildSymbolCatalogFromFiles(workspace.files || []);
+      setActiveSymbolKey(derived.defaultKey || null);
+
+      if (nextRepoDocs.length > 0) {
+        pushQuestLog(
+          `Loaded ${nextRepoDocs.length} repo doc(s) from PR head: ${nextRepoDocs.map(d => d.path).join(', ')}`
+        );
+      }
+    }
+
+    const updatedQueries = await api.listQueries();
+    setQueries(updatedQueries);
+  };
+
+  const handleSelectGitHubPr = async (pr) => {
+    if (!pr?.owner || !pr?.repo || !pr?.number) return;
+    if (pr.queryId === currentQueryId && !githubPrLoading) return;
+
+    setGithubPrLoading(true);
+    setGithubError('');
+    setSyncStatus('syncing');
+
+    const res = await api.fetchGitHubPullRequest(pr.owner, pr.repo, pr.number);
+    setGithubPrLoading(false);
+
+    if (!res.success) {
+      setGithubError(res.error || `Failed to load PR #${pr.number}`);
+      setSyncStatus('offline');
+      return;
+    }
+
+    await applyGithubWorkspace(res);
+    setQuestLogs(prev => [
+      {
+        id: Date.now(),
+        text: `🔀 Switched to GitHub PR #${pr.number}: ${pr.title}`,
+        timestamp: new Date().toLocaleTimeString()
+      },
+      ...prev
+    ].slice(0, 5));
+  };
+
+  const handleToggleGithubPr = async (direction) => {
+    if (!githubPullRequests.length) return;
+    const idx = githubPullRequests.findIndex(pr => pr.queryId === currentQueryId);
+    const fallback = direction === 'next' ? 0 : githubPullRequests.length - 1;
+    const nextIdx =
+      idx < 0
+        ? fallback
+        : direction === 'next'
+          ? (idx + 1) % githubPullRequests.length
+          : (idx - 1 + githubPullRequests.length) % githubPullRequests.length;
+    await handleSelectGitHubPr(githubPullRequests[nextIdx]);
+  };
+
   // --- XP & Progression Handlers ---
   const handleAddXp = (amount, reason, actionId = null) => {
     if (actionId) {
@@ -316,10 +632,23 @@ function AppContent() {
   const totalStandardsCount = (standards || []).length;
   const isLevel2Complete = totalStandardsCount > 0 && completedStandardsCount === totalStandardsCount;
 
-  const symbolKeys = Object.keys(initialSymbolCatalog);
-  const completedSymbolsCount = (auditedSymbols || []).length;
+  const isGithubWorkspace = isGithubWorkspaceFiles(files) || String(currentQueryId).startsWith('GH-');
+  const derivedSymbols = isGithubWorkspace ? buildSymbolCatalogFromFiles(files) : null;
+  const symbolCatalog = derivedSymbols?.catalog && Object.keys(derivedSymbols.catalog).length > 0
+    ? derivedSymbols.catalog
+    : initialSymbolCatalog;
+  const symbolKeys = Object.keys(symbolCatalog || {});
+  const completedSymbolsCount = (auditedSymbols || []).filter((k) => symbolKeys.includes(k)).length;
   const totalSymbolsCount = symbolKeys.length;
   const isLevel3Complete = totalSymbolsCount > 0 && completedSymbolsCount === totalSymbolsCount;
+
+  // Keep Level 3 inspector keyed to a symbol that exists for this workspace
+  useEffect(() => {
+    if (!symbolKeys.length) return;
+    if (!activeSymbolKey || !symbolCatalog[activeSymbolKey]) {
+      setActiveSymbolKey(symbolKeys[0]);
+    }
+  }, [currentQueryId, files, symbolKeys.join('|')]);
 
   const allFilesReviewed = files.length > 0 && files.every(f => f.status !== 'pending');
   const reviewedCount = files.filter(f => f.status !== 'pending').length;
@@ -372,6 +701,7 @@ function AppContent() {
   };
 
   const handleAddComment = async (fileId, commentPayload) => {
+    const targetFile = files.find(f => f.id === fileId);
     const enriched = {
       id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       authorId: currentUser.id,
@@ -380,6 +710,9 @@ function AppContent() {
       authorAvatar: currentUser.avatar || '👨‍💻',
       type: commentPayload.type || 'note',
       text: commentPayload.text,
+      path: commentPayload.path || targetFile?.path || null,
+      line: commentPayload.line ?? null,
+      side: commentPayload.side || 'RIGHT',
       timestamp: 'Just now',
       ...commentPayload
     };
@@ -397,8 +730,8 @@ function AppContent() {
       return f;
     }));
 
-    // Post to API client
-    api.addComment(currentQueryId, fileId, enriched);
+    const res = await api.addComment(currentQueryId, fileId, enriched);
+    logGithubSync(res.githubSync, enriched.type === 'flag' ? 'flag' : 'comment');
   };
 
   const handleToggleStandard = (id) => {
@@ -460,13 +793,10 @@ function AppContent() {
       return [...prev, verdictEntry];
     });
 
-    api.submitVerdict(currentQueryId, verdictEntry);
+    const verdictRes = await api.submitVerdict(currentQueryId, verdictEntry);
     handleAddXp(100, `Submitted Final Review Verdict as ${currentUser.name}`, "final-verdict-submitted");
-
-    setQuestLogs(prev => [
-      { id: Date.now(), text: `🏆 Verdict submitted: ${userVerdictType.toUpperCase()} by ${currentUser.name}`, timestamp: new Date().toLocaleTimeString() },
-      ...prev
-    ].slice(0, 5));
+    pushQuestLog(`Verdict submitted: ${userVerdictType.toUpperCase()} by ${currentUser.name}`);
+    logGithubSync(verdictRes.githubSync, 'verdict');
 
     setIsVerdictOpen(false);
   };
@@ -544,6 +874,11 @@ function AppContent() {
         currentQueryTitle={currentQueryTitle}
         onOpenQuerySelector={() => setIsQuerySelectorOpen(true)}
         syncStatus={syncStatus}
+        githubPullRequests={githubPullRequests}
+        githubPrLoading={githubPrLoading}
+        onPrevGithubPr={() => handleToggleGithubPr('prev')}
+        onNextGithubPr={() => handleToggleGithubPr('next')}
+        githubStatus={githubStatus}
       />
 
       {/* Active Mission & Transition Banner */}
@@ -686,12 +1021,14 @@ function AppContent() {
                 architectureStandards={standards}
                 onToggleStandard={handleToggleStandard}
                 mermaidCode={initialArchitectureMermaid}
-                symbolCatalog={initialSymbolCatalog}
+                symbolCatalog={symbolCatalog}
                 activeSymbol={activeSymbolKey}
                 onSelectSymbol={setActiveSymbolKey}
                 onSelectFileByPath={handleSelectFileByPath}
                 onAddXp={handleAddXp}
                 onOpenArchModal={() => setIsDiagramModalOpen(true)}
+                onOpenRepoDocs={() => setIsArchOpen(true)}
+                repoDocs={repoDocs}
                 auditedSymbols={auditedSymbols}
                 onToggleSymbolAudit={handleToggleSymbolAudit}
                 isLevelComplete={
@@ -737,11 +1074,13 @@ function AppContent() {
                     onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
                     onOpenInfo={() => setIsInfoOpen(true)}
                     currentUser={currentUser}
+                    symbolCatalog={symbolCatalog}
                   />
                 </section>
                 <section className="lg:col-span-3 lg:sticky lg:top-4 self-start">
                   <FunctionInspectorPanel 
                     activeSymbolKey={activeSymbolKey}
+                    symbolCatalog={symbolCatalog}
                     onAddXp={handleAddXp}
                     onSelectFileByPath={handleSelectFileByPath}
                     onAuditedChange={handleToggleSymbolAudit}
@@ -763,6 +1102,7 @@ function AppContent() {
                   onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
                   onOpenInfo={() => setIsInfoOpen(true)}
                   currentUser={currentUser}
+                  symbolCatalog={symbolCatalog}
                 />
               </section>
             )}
@@ -775,16 +1115,27 @@ function AppContent() {
         isOpen={isDiagramModalOpen}
         onClose={() => setIsDiagramModalOpen(false)}
         jiraTicket={jiraTicket}
-        architectureStandards={standards}
+        currentQueryTitle={currentQueryTitle}
+        files={files}
+        architectureText={architectureText}
+        repoDocs={repoDocs}
+        onSelectNodeFile={(path) => {
+          handleSelectFileByPath(path);
+          setIsDiagramModalOpen(false);
+        }}
         onAddXp={handleAddXp}
       />
 
-      {/* Architecture Text Modal */}
+      {/* Architecture / Repo Docs Modal */}
       <ArchitectureModal 
         isOpen={isArchOpen} 
         onClose={() => setIsArchOpen(false)} 
         architectureText={architectureText} 
-        onSave={setArchitectureText}
+        repoDocs={repoDocs}
+        onSave={(nextText, nextDocs) => {
+          setArchitectureText(nextText);
+          if (Array.isArray(nextDocs)) setRepoDocs(nextDocs);
+        }}
         onAddXp={handleAddXp}
       />
 
@@ -963,11 +1314,18 @@ function AppContent() {
             </div>
 
             {/* Modal Footer */}
-            <div className="bg-[#F9F6F0] border-t border-[#E6E0D5] p-4 flex justify-between items-center">
+            <div className="bg-[#F9F6F0] border-t border-[#E6E0D5] p-4 flex justify-between items-center gap-3">
               <span className="text-xs text-[#6B635A]">
                 Persisted against <strong className="text-[#242220] font-mono">{currentQueryId}</strong>
+                {String(currentQueryId).startsWith('GH-') && (
+                  <span className="block text-[10px] mt-0.5">
+                    {githubStatus.linked
+                      ? `Also syncs to GitHub as @${githubStatus.login}`
+                      : 'Link GitHub in your profile to sync this verdict'}
+                  </span>
+                )}
               </span>
-              <div className="flex gap-2">
+              <div className="flex gap-2 shrink-0">
                 <button
                   onClick={() => setIsVerdictOpen(false)}
                   className="px-4 py-2 bg-white border border-[#E6E0D5] text-xs font-medium rounded-xl hover:bg-[#FFFDF9] cursor-pointer"
@@ -1149,6 +1507,11 @@ function AppContent() {
         onCustomLogin={handleCustomLogin}
         onCustomRegister={handleCustomRegister}
         onLogout={handleLogout}
+        githubStatus={githubStatus}
+        onLinkGithubWithToken={handleLinkGithubWithToken}
+        onLinkGithubOAuth={handleLinkGithubOAuth}
+        onUnlinkGithub={handleUnlinkGithub}
+        githubBusy={githubBusy}
       />
 
       {/* Query Selector Modal */}
@@ -1159,6 +1522,18 @@ function AppContent() {
         queries={queries}
         onSelectQuery={handleSelectQuery}
         onCreateQuery={handleCreateQuery}
+        githubRepoUrl={githubRepoUrl}
+        githubPullRequests={githubPullRequests}
+        githubLoading={githubLoading || githubPrLoading}
+        githubError={githubError}
+        onLoadRepo={handleLoadGithubRepo}
+        onSelectGitHubPr={handleSelectGitHubPr}
+        githubLinked={Boolean(githubStatus.linked)}
+        githubLogin={githubStatus.login}
+        myRepos={myRepos}
+        myReposLoading={myReposLoading}
+        onRefreshMyRepos={handleRefreshMyRepos}
+        onSelectMyRepo={handleSelectMyRepo}
       />
 
       {/* Global Informational Side Panel / Drawer */}

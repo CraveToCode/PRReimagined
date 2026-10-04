@@ -55,7 +55,8 @@ class DatabaseManager {
     this.fallbackStore = {
       users: {},
       review_queries: {},
-      user_progress: {}
+      user_progress: {},
+      github_links: {}
     };
     this.init();
   }
@@ -104,6 +105,15 @@ class DatabaseManager {
         awarded_actions_json TEXT DEFAULT '[]',
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(user_id, query_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS github_links (
+        user_id TEXT PRIMARY KEY,
+        github_user_id TEXT NOT NULL,
+        login TEXT NOT NULL,
+        access_token TEXT NOT NULL,
+        avatar_url TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
   }
@@ -155,6 +165,10 @@ class DatabaseManager {
         console.error('[DB Fallback] Failed reading store file, resetting.', e);
       }
     }
+    this.fallbackStore.users = this.fallbackStore.users || {};
+    this.fallbackStore.review_queries = this.fallbackStore.review_queries || {};
+    this.fallbackStore.user_progress = this.fallbackStore.user_progress || {};
+    this.fallbackStore.github_links = this.fallbackStore.github_links || {};
 
     // Seed preset users
     for (const u of PRESET_USERS) {
@@ -395,6 +409,66 @@ class DatabaseManager {
         updated_at = excluded.updated_at
     `);
     stmt.run(key, userId, queryId, level, unlockedLevel, xp, awardedJson, now);
+    return true;
+  }
+
+  // --- GitHub OAuth link (token never exposed via API layer) ---
+  getGithubLink(userId) {
+    if (!userId) return null;
+    if (this.useMemoryFallback) {
+      return this.fallbackStore.github_links[userId] || null;
+    }
+    const row = this.sqlite.prepare(`
+      SELECT user_id, github_user_id, login, access_token, avatar_url, updated_at
+      FROM github_links
+      WHERE user_id = ?
+    `).get(userId);
+    if (!row) return null;
+    return {
+      userId: row.user_id,
+      githubUserId: row.github_user_id,
+      login: row.login,
+      accessToken: row.access_token,
+      avatarUrl: row.avatar_url,
+      updatedAt: row.updated_at
+    };
+  }
+
+  upsertGithubLink(userId, { githubUserId, login, accessToken, avatarUrl }) {
+    const now = new Date().toISOString();
+    if (this.useMemoryFallback) {
+      this.fallbackStore.github_links[userId] = {
+        userId,
+        githubUserId: String(githubUserId),
+        login,
+        accessToken,
+        avatarUrl: avatarUrl || null,
+        updatedAt: now
+      };
+      this.persistFallback();
+      return this.getGithubLink(userId);
+    }
+    this.sqlite.prepare(`
+      INSERT INTO github_links (user_id, github_user_id, login, access_token, avatar_url, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        github_user_id = excluded.github_user_id,
+        login = excluded.login,
+        access_token = excluded.access_token,
+        avatar_url = excluded.avatar_url,
+        updated_at = excluded.updated_at
+    `).run(userId, String(githubUserId), login, accessToken, avatarUrl || null, now);
+    return this.getGithubLink(userId);
+  }
+
+  deleteGithubLink(userId) {
+    if (!userId) return false;
+    if (this.useMemoryFallback) {
+      delete this.fallbackStore.github_links[userId];
+      this.persistFallback();
+      return true;
+    }
+    this.sqlite.prepare(`DELETE FROM github_links WHERE user_id = ?`).run(userId);
     return true;
   }
 }

@@ -13,14 +13,16 @@ import {
 
 export default function FunctionInspectorPanel({
   activeSymbolKey,
-  symbolCatalog,
+  symbolCatalog = {},
   onSelectSymbol,
   onSelectFileByPath
 }) {
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [viewFormat, setViewFormat] = useState('split'); // 'split' | 'modified' | 'original'
 
-  const activeSymbol = symbolCatalog[activeSymbolKey] || symbolCatalog['rotateSessionToken'];
+  const catalog = symbolCatalog && typeof symbolCatalog === 'object' ? symbolCatalog : {};
+  const fallbackKey = Object.keys(catalog)[0] || null;
+  const activeSymbol = catalog[activeSymbolKey] || (fallbackKey ? catalog[fallbackKey] : null);
 
   if (!activeSymbol) {
     return (
@@ -187,11 +189,16 @@ export default function FunctionInspectorPanel({
       {/* Downstream Callers List */}
       <div className="border-t border-[#F1ECE4] pt-3">
         <div className="flex items-center justify-between text-xs font-bold text-[#242220] mb-2">
-          <span>Downstream Call Sites ({activeSymbol.callers.length})</span>
+          <span>Downstream Call Sites ({(activeSymbol.callers || []).length})</span>
           <span className="text-[10px] text-[#C35832]">Blast Radius</span>
         </div>
         <div className="space-y-1.5">
-          {activeSymbol.callers.map((caller, idx) => (
+          {(activeSymbol.callers || []).length === 0 ? (
+            <p className="text-[11px] text-[#6B635A] bg-[#F9F6F0] border border-[#E6E0D5] rounded-md p-2">
+              No other call sites detected in this PR’s changed files.
+            </p>
+          ) : null}
+          {(activeSymbol.callers || []).map((caller, idx) => (
             <div 
               key={idx}
               className="p-2 border border-[#E6E0D5] rounded-md bg-[#FFFDF9] hover:border-[#C35832] transition-colors"

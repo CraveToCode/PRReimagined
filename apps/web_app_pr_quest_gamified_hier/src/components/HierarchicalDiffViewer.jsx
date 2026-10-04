@@ -14,7 +14,8 @@ export default function HierarchicalDiffViewer({
   level = 1,
   onInspectSymbol,
   onOpenInfo,
-  currentUser
+  currentUser,
+  symbolCatalog = null
 }) {
   const [commentInputs, setCommentInputs] = useState({});
   const [expandedFiles, setExpandedFiles] = useState({});
@@ -22,6 +23,13 @@ export default function HierarchicalDiffViewer({
   const [flaggingFile, setFlaggingFile] = useState(null);
 
   const detectSymbol = (content) => {
+    if (!content) return null;
+    // Prefer matches against the active symbol catalog (GitHub PR derived or demo)
+    const catalogKeys = symbolCatalog ? Object.keys(symbolCatalog) : [];
+    for (const key of catalogKeys) {
+      const name = symbolCatalog[key]?.name || key;
+      if (name && content.includes(name)) return key;
+    }
     if (content.includes("rotateSessionToken")) return "rotateSessionToken";
     if (content.includes("interceptors.response.use") || (content.includes("response.use") && content.includes("apiClient"))) return "apiClient.interceptors.response.use";
     if (content.includes("SessionProvider")) return "SessionProvider";
@@ -48,6 +56,7 @@ export default function HierarchicalDiffViewer({
       authorAvatar: currentUser?.avatar || '👨‍💻',
       type: 'approval',
       text: `Approved by ${currentUser?.name || 'Reviewer'}.`,
+      path: file.path,
       timestamp: 'Just now'
     });
   };
@@ -66,6 +75,7 @@ export default function HierarchicalDiffViewer({
       authorAvatar: currentUser?.avatar || '👨‍💻',
       type: 'flag',
       text: `[${commentData.tag}] ${commentData.text}`,
+      path: flaggingFile.path,
       timestamp: 'Just now'
     });
 
@@ -78,9 +88,11 @@ export default function HierarchicalDiffViewer({
     const text = commentInputs[`${fileId}-${lineNum}`];
     if (!text || !text.trim()) return;
 
+    const file = files.find(f => f.id === fileId);
     onAddComment(fileId, {
       id: Date.now(),
       line: lineNum,
+      path: file?.path || null,
       authorId: currentUser?.id || 'alex_staff',
       authorName: currentUser?.name || 'Reviewer',
       authorRole: currentUser?.role || 'Code Reviewer',

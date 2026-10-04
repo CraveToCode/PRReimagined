@@ -29,6 +29,8 @@ export default function DynamicLeftPanel({
   onSelectFileByPath,
   onAddXp,
   onOpenArchModal,
+  onOpenRepoDocs,
+  repoDocs = [],
   isLevelComplete,
   auditedSymbols = [],
   onToggleSymbolAudit
@@ -49,6 +51,11 @@ export default function DynamicLeftPanel({
   // Level 2: Core Architecture & Standards Audit
   if (level === 2) {
     const verifiedCount = architectureStandards.filter(s => s.completed).length;
+    const primaryDocPath =
+      repoDocs.find((d) => d.role === 'architecture')?.path ||
+      architectureStandards[0]?.standardFile ||
+      'ARCHITECTURE.md';
+    const changedDocCount = repoDocs.filter((d) => d.changedInPr).length;
 
     return (
       <div className="space-y-4">
@@ -74,6 +81,24 @@ export default function DynamicLeftPanel({
             <span>Open Excalidraw Diagram</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
+
+          {typeof onOpenRepoDocs === 'function' && (
+            <button
+              onClick={onOpenRepoDocs}
+              className="w-full mt-2 py-2 bg-white border border-[#E6E0D5] hover:bg-[#F9F6F0] text-[#242220] text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-[#C35832]" />
+              <span>
+                Open Repo Docs
+                {repoDocs.length > 0 ? ` (${repoDocs.length})` : ''}
+              </span>
+              {changedDocCount > 0 && (
+                <span className="text-[9px] bg-[#FFFDF9] text-[#D08A29] border border-[#D08A29]/30 px-1.5 py-0.2 rounded font-bold">
+                  {changedDocCount} edited
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Architecture Standards Checklist (Now Spacious & Uncramped) */}
@@ -89,7 +114,9 @@ export default function DynamicLeftPanel({
               </span>
             </div>
             <p className="text-[11px] text-[#6B635A] mt-1.5 leading-relaxed">
-              Verify Tier 1 modules against production security and resilience standards from <code className="bg-[#F1ECE4] px-1 rounded text-[10px]">docs/standards/</code>:
+              Verify Tier 1 modules against guidance from{' '}
+              <code className="bg-[#F1ECE4] px-1 rounded text-[10px]">{primaryDocPath}</code>
+              {repoDocs.length > 1 ? ` (+${repoDocs.length - 1} more doc${repoDocs.length - 1 === 1 ? '' : 's'})` : ''}:
             </p>
           </div>
 
@@ -180,10 +207,17 @@ export default function DynamicLeftPanel({
 
         {/* Symbol Tree */}
         <div className="space-y-2 flex-1 overflow-y-auto max-h-[360px] pr-1">
+          {symbols.length === 0 ? (
+            <div className="text-xs text-[#6B635A] bg-[#F9F6F0] border border-[#E6E0D5] rounded-lg p-3">
+              No symbols could be derived from this PR’s diffs yet. Review file changes in the center panel, then mark blast-radius checks as you go.
+            </div>
+          ) : null}
           {symbols.map((symKey) => {
-            const sym = symbolCatalog[symKey];
+            const sym = symbolCatalog?.[symKey];
+            if (!sym) return null;
             const isSelected = activeSymbol === symKey;
             const isAudited = auditedSymbols.includes(symKey);
+            const callerCount = Array.isArray(sym.callers) ? sym.callers.length : 0;
 
             return (
               <div 
@@ -223,7 +257,7 @@ export default function DynamicLeftPanel({
                       ? 'bg-white text-[#4F6D56] border-[#4F6D56]/30 font-semibold' 
                       : 'bg-white border-[#E6E0D5] text-[#6B635A]'
                   }`}>
-                    {sym.callers.length} consumers
+                    {callerCount} consumers
                   </span>
                 </div>
                 <div className="text-[10px] text-[#6B635A] font-mono mt-1 truncate pl-6">
