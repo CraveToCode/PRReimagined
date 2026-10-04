@@ -321,7 +321,7 @@ export const architectureStandards = [
     standardFile: "docs/standards/token-security.md",
     category: "Security & Storage",
     title: "Secure Storage Fallback Isolation",
-    description: "Verify that localStorage is guarded and token access is abstracted inside SessionManager without leaking raw keys to window.",
+    description: "Isolate tokens inside SessionManager; avoid exposing raw storage keys to window.",
     completed: false
   },
   {
@@ -329,23 +329,23 @@ export const architectureStandards = [
     standardFile: "docs/standards/api-resilience.md",
     category: "Network Resilience",
     title: "Infinite 401 Loop Prevention",
-    description: "Verify that ApiClient sets an idempotent _retry guard flag on failed requests before attempting token rotation.",
+    description: "Set idempotent _retry flag on failed 401 requests to prevent recursive loops.",
     completed: false
   },
   {
     id: "STD-ISO-03",
     standardFile: "docs/standards/context-lifecycle.md",
     category: "Architecture Boundaries",
-    title: "Context-to-Core Unidirectional Data Flow",
-    description: "Ensure SessionContext subscribes to SessionManager state rather than duplicating token logic or mutating storage directly.",
+    title: "Context-to-Core Unidirectional Flow",
+    description: "Ensure unidirectional state flow from SessionManager into SessionProvider context.",
     completed: false
   },
   {
     id: "STD-ERR-04",
     standardFile: "docs/standards/error-recovery.md",
     category: "Error Recovery",
-    title: "Graceful Refresh Rejection & Redirection",
-    description: "Confirm that unrecoverable refresh failures trigger user logout and redirection to /login instead of unhandled promise rejections.",
+    title: "Graceful Refresh Rejection",
+    description: "Redirect to /login gracefully on unrecoverable refresh failure.",
     completed: false
   }
 ];

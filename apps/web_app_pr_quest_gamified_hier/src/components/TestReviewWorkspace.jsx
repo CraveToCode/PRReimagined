@@ -313,12 +313,11 @@ export default function TestReviewWorkspace({
               </pre>
 
               {/* Insight Callout */}
-              <div className="bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl p-3.5 text-xs text-[#6B635A] flex items-start gap-2">
-                <Sparkles className="w-4 h-4 text-[#D08A29] mt-0.5 flex-shrink-0" />
-                <div>
-                  <span className="font-bold text-[#242220]">Reviewer Insight:</span> {activeTest.notes}
+              {activeTest.notes && (
+                <div className="text-[11px] text-[#6B635A] font-medium pt-1">
+                  💡 <span className="text-[#242220] font-semibold">Note:</span> {activeTest.notes}
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}
@@ -347,45 +346,37 @@ export default function TestReviewWorkspace({
             <div className="p-5 flex-1 flex flex-col space-y-3.5">
               <div className="flex items-center justify-between text-xs font-bold text-[#242220]">
                 <span>Target Logic Executed by Test:</span>
-                <span className="text-[11px] text-[#6B635A]">Verify error boundaries & return contracts</span>
+                <span className="text-[11px] text-[#6B635A]">Verify return contracts</span>
               </div>
 
               {/* Spacious, Roomy Target Code Container */}
               <pre className="bg-[#FFFDF9] border border-[#E6E0D5] text-[#242220] p-5 rounded-xl font-mono text-xs leading-relaxed overflow-x-auto h-[480px] shadow-inner select-text">
                 <code>{activeTest.testedFunctionCode}</code>
               </pre>
-
-              {/* Verification Guideline Callout */}
-              <div className="bg-[#FFFDF9] border border-[#D08A29]/20 rounded-xl p-3.5 text-xs text-[#6B635A] flex items-start gap-2">
-                <CheckCircle className="w-4 h-4 text-[#4F6D56] mt-0.5 flex-shrink-0" />
-                <div>
-                  <span className="font-bold text-[#242220]">Verification Rule:</span> Confirm that each exception branch (e.g. <code>if (!this.refreshToken)</code>) is matched by an explicit test expectation on the left.
-                </div>
-              </div>
             </div>
           </div>
         )}
       </div>
 
       {/* Roomy Bottom Final Review Milestone Card */}
-      <div className="bg-gradient-to-r from-white to-[#FFFDF9] border-2 border-[#C35832] rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-5">
+      <div className="bg-gradient-to-r from-white to-[#FFFDF9] border-2 border-[#C35832] rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
-            <div className="bg-[#D08A29] text-white p-1.5 rounded-lg">
-              <Award className="w-5 h-5" />
+          <div className="flex items-center gap-2">
+            <div className="bg-[#D08A29] text-white p-1 rounded-lg">
+              <Award className="w-4 h-4" />
             </div>
-            <h3 className="text-base font-bold text-[#242220]">
+            <h3 className="text-sm font-bold text-[#242220]">
               Final Review Milestone Ready
             </h3>
           </div>
-          <p className="text-xs text-[#6B635A] max-w-2xl leading-relaxed">
-            All code tiers, architectural standards, and test suites have been cross-verified. You are ready to compile approval statistics and submit the final review verdict report to GitHub.
+          <p className="text-xs text-[#6B635A]">
+            All code tiers, standards, and test suites are verified. Submit your sign-off report to complete the quest.
           </p>
         </div>
 
         <button
           onClick={onOpenVerdict}
-          className="px-6 py-3 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2 flex-shrink-0 cursor-pointer group"
+          className="px-5 py-2.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-2 flex-shrink-0 cursor-pointer group"
         >
           <span>{isVerdictSubmitted ? "View Review Report" : "Submit Final Review Verdict (+100 XP)"}</span>
           <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />

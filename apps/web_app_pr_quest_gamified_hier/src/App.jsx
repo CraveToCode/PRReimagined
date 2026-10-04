@@ -132,23 +132,23 @@ export default function App() {
   const levelMissions = {
     1: {
       title: "Level 1: Spec & Intent Alignment",
-      action: "Cross-check the JIRA acceptance criteria against code changes. Verify that AC items match the PR intent.",
-      tip: "Click on acceptance criteria checkboxes on the left as you verify them (+25 XP each)."
+      action: "Cross-check JIRA acceptance criteria against code changes.",
+      tip: "Check AC items on the left as you verify (+25 XP each)."
     },
     2: {
       title: "Level 2: Core Architecture Audit",
-      action: "Review Tier 1: Core Logic files (SessionManager.js, ApiClient.js). Verify foundational state, token encryption, and rotation contracts.",
-      tip: "Tier 1 files are ranked with the highest importance (85–95/100). Approve or flag them to earn XP."
+      action: "Audit Tier 1 core logic files and standard practices.",
+      tip: "Inspect the Excalidraw architecture diagram and review core diffs."
     },
     3: {
       title: "Level 3: Blast Radius & Downstream Verification",
-      action: "Examine downstream consumers in the right-hand panel (SessionContext.jsx, ProtectedRoute.jsx). Ensure changes don't break call-sites.",
-      tip: "Click 'Inspect Changes' on referencing files to quickly inspect consumer code."
+      action: "Examine downstream consumers to ensure call-sites remain unbroken.",
+      tip: "Click function signatures in the diff to load implementation side-by-side."
     },
     4: {
       title: "Level 4: Test Suite & Final Verdict",
-      action: "Verify unit test coverage in SessionManager.test.js and submit your Final Review Verdict.",
-      tip: "Click '🏆 Final Verdict' in the header to review approval statistics and submit (+100 XP)."
+      action: "Verify test coverage against production logic and submit final review.",
+      tip: "Approve tests and submit final verdict (+100 XP)."
     }
   };
 

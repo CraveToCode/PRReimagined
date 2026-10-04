@@ -1,32 +1,24 @@
 import React, { useState } from 'react';
 import { 
-  Layers, 
   X, 
-  GitCommit, 
-  ArrowRight, 
-  CheckCircle, 
-  Copy, 
   ExternalLink, 
-  PlusCircle, 
-  RefreshCw, 
-  MinusCircle, 
-  ShieldCheck, 
-  Sparkles, 
-  HelpCircle 
+  Copy, 
+  CheckCircle, 
+  RotateCcw,
+  Sparkles,
+  MousePointer
 } from 'lucide-react';
 
 export default function ArchitectureDiagramModal({
   isOpen,
   onClose,
   onSelectNodeFile,
-  netChanges,
   baselineMermaid,
   proposedMermaid,
-  diffMermaid,
-  onAddXp
+  diffMermaid
 }) {
-  const [activeTab, setActiveTab] = useState('diff'); // 'diff' | 'proposed' | 'baseline' | 'code'
-  const [selectedNodeId, setSelectedNodeId] = useState('SM');
+  const [activeTab, setActiveTab] = useState('sketch'); // 'sketch' | 'proposed' | 'baseline' | 'code'
+  const [selectedNode, setSelectedNode] = useState('SM');
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
@@ -37,75 +29,59 @@ export default function ArchitectureDiagramModal({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const nodes = [
-    {
-      id: "SM",
-      title: "SessionManager",
-      tier: "Tier 1: Core Logic",
-      path: "src/services/SessionManager.js",
-      diffStatus: "added",
-      badge: "+ ADDED IN PR",
-      color: "border-[#4F6D56] bg-[#F4F8F5] text-[#242220]",
-      badgeColor: "bg-[#4F6D56] text-white",
-      desc: "Crypto token rotation engine & AES localStorage fallback cache.",
-      archRole: "Acts as single source of truth for access & refresh tokens. Exposes rotateSessionToken().",
-      rationale: "Decouples credential lifecycle from React UI rendering and Axios networking."
+  const nodeDetails = {
+    SM: {
+      name: "SessionManager.js",
+      badge: "+ NEW CORE ENGINE",
+      badgeColor: "bg-[#EBF7EE] text-[#2D6A4F] border-[#2D6A4F]/30",
+      summary: "Handles AES token storage and calls /api/auth/rotate for refresh tokens.",
+      path: "src/services/SessionManager.js"
     },
-    {
-      id: "API",
-      title: "ApiClient",
-      tier: "Tier 1: Core Logic",
-      path: "src/api/ApiClient.js",
-      diffStatus: "modified",
-      badge: "~ MODIFIED FLOW",
-      color: "border-[#D08A29] bg-[#FFFDF9] text-[#242220]",
-      badgeColor: "bg-[#D08A29] text-white",
-      desc: "Axios response interceptor catching 401s with _retry guard flag.",
-      archRole: "Intercepts unauthorized 401 responses, asks SessionManager for a new token, then seamlessly replays queued HTTP requests.",
-      rationale: "Replaces destructive hard logout with self-healing token refresh loop."
+    API: {
+      name: "ApiClient.js",
+      badge: "~ MODIFIED 401 INTERCEPTOR",
+      badgeColor: "bg-[#FFF8E7] text-[#B45309] border-[#B45309]/30",
+      summary: "Catches 401s, sets idempotent _retry guard, and triggers rotateSessionToken().",
+      path: "src/api/ApiClient.js"
     },
-    {
-      id: "SC",
-      title: "SessionProvider",
-      tier: "Tier 2: Consumer",
-      path: "src/context/SessionContext.jsx",
-      diffStatus: "modified",
-      badge: "~ MODIFIED FLOW",
-      color: "border-[#D08A29] bg-[#FFFDF9] text-[#242220]",
-      badgeColor: "bg-[#D08A29] text-white",
-      desc: "React Context managing auth state with 14-min interval rotation timer.",
-      archRole: "Proactively triggers token rotation every 14 minutes before 15m JWT TTL expires. Cleaned up on unmount.",
-      rationale: "Prevents token expiration during active user sessions before user makes network calls."
+    SC: {
+      name: "SessionContext.jsx",
+      badge: "~ MODIFIED BACKGROUND TIMER",
+      badgeColor: "bg-[#FFF8E7] text-[#B45309] border-[#B45309]/30",
+      summary: "Proactive 14-min interval rotation timer cleaned up on unmount.",
+      path: "src/context/SessionContext.jsx"
     },
-    {
-      id: "PR",
-      title: "ProtectedRoute",
-      tier: "Tier 2: Consumer",
-      path: "src/components/ProtectedRoute.jsx",
-      diffStatus: "unchanged",
-      badge: "= UNCHANGED",
-      color: "border-[#E6E0D5] bg-[#F9F6F0] text-[#242220]",
-      badgeColor: "bg-[#6B635A] text-white",
-      desc: "Route guard subscribing to user context.",
-      archRole: "Checks isAuthenticated boolean before rendering protected subtrees; redirects to /login if unauthenticated.",
-      rationale: "Consumer contract remains stable. No breaking change to routing architecture."
+    PR: {
+      name: "ProtectedRoute.jsx",
+      badge: "= UNCHANGED ROUTE GUARD",
+      badgeColor: "bg-[#F3F4F6] text-[#4B5563] border-[#4B5563]/30",
+      summary: "Reads user state from SessionContext to guard routes.",
+      path: "src/components/ProtectedRoute.jsx"
     },
-    {
-      id: "API_SRV",
-      title: "Auth Server (/api/auth/rotate)",
-      tier: "External Backend",
-      path: "POST /api/auth/rotate",
-      diffStatus: "unchanged",
-      badge: "= UNCHANGED",
-      color: "border-[#E6E0D5] bg-[#F9F6F0] text-[#6B635A]",
-      badgeColor: "bg-[#6B635A] text-white",
-      desc: "Authoritative authentication server validating refresh tokens.",
-      archRole: "Exchanges valid refresh token for fresh JWT access token and rolling refresh token.",
-      rationale: "Standard OAuth2/JWT token rotation contract."
+    AUTH: {
+      name: "Auth Server (/api/auth/rotate)",
+      badge: "= EXTERNAL API",
+      badgeColor: "bg-[#F3F4F6] text-[#4B5563] border-[#4B5563]/30",
+      summary: "Exchanges valid refresh token for fresh JWT access token.",
+      path: null
+    },
+    REST: {
+      name: "Protected REST APIs",
+      badge: "= EXTERNAL TARGET",
+      badgeColor: "bg-[#F3F4F6] text-[#4B5563] border-[#4B5563]/30",
+      summary: "Receives replayed requests with Bearer authorization header.",
+      path: null
+    },
+    KILL: {
+      name: "Hard /login Kill (Old)",
+      badge: "- DEPRECATED FLOW",
+      badgeColor: "bg-[#FEE2E2] text-[#DC2626] border-[#DC2626]/30",
+      summary: "Old destructive flow where any 401 instantly logged the user out.",
+      path: null
     }
-  ];
+  };
 
-  const selectedNode = nodes.find(n => n.id === selectedNodeId) || nodes[0];
+  const activeNodeInfo = nodeDetails[selectedNode] || nodeDetails.SM;
 
   return (
     <div 
@@ -114,600 +90,402 @@ export default function ArchitectureDiagramModal({
     >
       <div 
         onClick={(e) => e.stopPropagation()}
-        className="bg-white border border-[#E6E0D5] rounded-2xl max-w-5xl w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="bg-[#FDFCFB] border border-[#E6E0D5] rounded-2xl max-w-5xl w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden"
       >
-        {/* Modal Top Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-6 py-4 border-b border-[#F1ECE4] bg-white gap-3">
+        {/* Header Bar */}
+        <div className="flex items-center justify-between px-6 py-3.5 border-b border-[#E6E0D5] bg-white">
           <div className="flex items-center gap-3">
-            <div className="bg-[#C35832] text-white p-2.5 rounded-xl shadow-xs">
-              <Layers className="w-5 h-5" />
-            </div>
+            <span className="text-xl">📐</span>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-[#242220] tracking-tight">
-                  System Architecture & Diagrammatical Diff
+                <h2 className="text-base font-bold text-[#242220] tracking-tight">
+                  Architecture Diagram
                 </h2>
-                <span className="text-[11px] font-bold bg-[#F4F8F5] text-[#4F6D56] px-2 py-0.5 rounded border border-[#4F6D56]/20">
-                  Visual Net Diff
+                <span className="text-[10px] font-mono uppercase font-bold bg-[#EBF7EE] text-[#2D6A4F] px-2 py-0.5 rounded border border-[#2D6A4F]/20">
+                  Excalidraw Sketch
                 </span>
               </div>
-              <p className="text-xs text-[#6B635A] mt-0.5">
-                Compare baseline vs proposed topology and audit the exact diagrammatical changes introduced by PR #PROJ-402
+              <p className="text-xs text-[#6B635A]">
+                Visual net diff: Green = Added, Amber = Modified, Red = Removed
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-center">
+          <div className="flex items-center gap-2">
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-1 bg-[#F9F6F0] p-1 rounded-xl border border-[#E6E0D5]">
+              <button
+                onClick={() => setActiveTab('sketch')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'sketch'
+                    ? 'bg-[#C35832] text-white shadow-2xs'
+                    : 'text-[#6B635A] hover:text-[#242220]'
+                }`}
+              >
+                Excalidraw Diff
+              </button>
+              <button
+                onClick={() => setActiveTab('proposed')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'proposed'
+                    ? 'bg-[#C35832] text-white shadow-2xs'
+                    : 'text-[#6B635A] hover:text-[#242220]'
+                }`}
+              >
+                Proposed Flow
+              </button>
+              <button
+                onClick={() => setActiveTab('baseline')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'baseline'
+                    ? 'bg-[#C35832] text-white shadow-2xs'
+                    : 'text-[#6B635A] hover:text-[#242220]'
+                }`}
+              >
+                Baseline Flow
+              </button>
+              <button
+                onClick={() => setActiveTab('code')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'code'
+                    ? 'bg-[#C35832] text-white shadow-2xs'
+                    : 'text-[#6B635A] hover:text-[#242220]'
+                }`}
+              >
+                Mermaid Code
+              </button>
+            </div>
+
             <button 
               onClick={onClose}
-              className="p-1.5 text-[#6B635A] hover:text-[#242220] rounded-lg hover:bg-[#F9F6F0] transition-colors"
-              title="Close modal (Esc)"
+              className="p-1.5 text-[#6B635A] hover:text-[#242220] rounded-lg hover:bg-[#F9F6F0] transition-colors ml-2 cursor-pointer"
+              title="Close (Esc)"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* View Mode Navigation Tabs */}
-        <div className="px-6 py-2.5 bg-[#FFFDF9] border-b border-[#E6E0D5] flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 bg-[#F9F6F0] p-1 rounded-xl border border-[#E6E0D5]">
-            <button
-              onClick={() => setActiveTab('diff')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'diff'
-                  ? 'bg-[#C35832] text-white shadow-xs'
-                  : 'text-[#6B635A] hover:text-[#242220]'
-              }`}
-            >
-              <span>🎨 Net Changes (Diff View)</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded font-extrabold ${
-                activeTab === 'diff' ? 'bg-white/20 text-white' : 'bg-[#E6E0D5] text-[#242220]'
-              }`}>
-                Recommended
-              </span>
-            </button>
+        {/* Diagram Canvas Body */}
+        <div className="flex-1 overflow-auto p-4 sm:p-6 bg-[#FDFCFB] flex flex-col justify-center items-center relative select-none">
+          {activeTab !== 'code' ? (
+            <div className="w-full max-w-4xl bg-white border-2 border-[#E6E0D5] rounded-2xl p-4 shadow-sm relative overflow-hidden">
+              {/* Subtle Excalidraw Dot Grid Background */}
+              <div 
+                className="absolute inset-0 pointer-events-none opacity-40"
+                style={{
+                  backgroundImage: `radial-gradient(#D5CEC5 1.2px, transparent 1.2px)`,
+                  backgroundSize: '24px 24px'
+                }}
+              />
 
-            <button
-              onClick={() => setActiveTab('proposed')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'proposed'
-                  ? 'bg-[#C35832] text-white shadow-xs'
-                  : 'text-[#6B635A] hover:text-[#242220]'
-              }`}
-            >
-              <span>🏛️ Proposed Architecture (After PR)</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('baseline')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'baseline'
-                  ? 'bg-[#C35832] text-white shadow-xs'
-                  : 'text-[#6B635A] hover:text-[#242220]'
-              }`}
-            >
-              <span>🕰️ Baseline Architecture (Before PR)</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('code')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'code'
-                  ? 'bg-[#C35832] text-white shadow-xs'
-                  : 'text-[#6B635A] hover:text-[#242220]'
-              }`}
-            >
-              <span>📝 Mermaid Syntax Diff</span>
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 text-xs text-[#6B635A]">
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#4F6D56]"></span> Added
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#D08A29]"></span> Modified Flow
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#A84725]"></span> Deprecated Flow
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#6B635A]"></span> Baseline
-            </span>
-          </div>
-        </div>
-
-        {/* Modal Body Container */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#F9F6F0]">
-          {/* Net Change Summary Ribbon */}
-          {activeTab === 'diff' && (
-            <div className="bg-white border border-[#E6E0D5] rounded-xl p-4 shadow-xs">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-[#F1ECE4]">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-extrabold uppercase tracking-wider text-[#C35832]">
-                      Architectural Net Impact
+              {/* Legend Strip */}
+              <div className="relative z-10 flex items-center justify-between text-xs text-[#6B635A] pb-2 border-b border-[#F1ECE4] mb-4">
+                <div className="flex items-center gap-3 font-medium">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded bg-[#EBF7EE] border border-[#2D6A4F]"></span>
+                    <strong className="text-[#2D6A4F]">+ New Component</strong>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded bg-[#FFF8E7] border border-[#D97706]"></span>
+                    <strong className="text-[#D97706]">~ Modified Flow</strong>
+                  </span>
+                  {activeTab === 'sketch' && (
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded bg-[#FEE2E2] border border-dashed border-[#DC2626]"></span>
+                      <strong className="text-[#DC2626]">- Removed Flow</strong>
                     </span>
-                    <span className="text-[10px] bg-[#F4F8F5] text-[#4F6D56] font-bold px-2 py-0.5 rounded border border-[#4F6D56]/20">
-                      Non-Breaking Enhancements
-                    </span>
-                  </div>
-                  <p className="text-xs text-[#242220] font-medium mt-1 leading-relaxed">
-                    {netChanges?.summary || "Introduces an autonomous token rotation lifecycle with localStorage fallback, replacing hard 401 session terminations with self-healing request retries and proactive 14-minute background refreshes."}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
-                  <div className="bg-[#F4F8F5] border border-[#4F6D56]/30 rounded-lg px-2.5 py-1 text-center">
-                    <div className="text-xs font-extrabold text-[#4F6D56]">+1 Node</div>
-                    <div className="text-[9px] text-[#6B635A]">Core Module</div>
-                  </div>
-                  <div className="bg-[#F4F8F5] border border-[#4F6D56]/30 rounded-lg px-2.5 py-1 text-center">
-                    <div className="text-xs font-extrabold text-[#4F6D56]">+2 Edges</div>
-                    <div className="text-[9px] text-[#6B635A]">New Flows</div>
-                  </div>
-                  <div className="bg-[#FFFDF9] border border-[#D08A29]/30 rounded-lg px-2.5 py-1 text-center">
-                    <div className="text-xs font-extrabold text-[#D08A29]">~2 Nodes</div>
-                    <div className="text-[9px] text-[#6B635A]">Modified Logic</div>
-                  </div>
-                  <div className="bg-[#FBEFEF] border border-[#C35832]/30 rounded-lg px-2.5 py-1 text-center">
-                    <div className="text-xs font-extrabold text-[#C35832]">-1 Flow</div>
-                    <div className="text-[9px] text-[#6B635A]">Hard Logout</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Quick Callout Highlights */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-3">
-                <div className="bg-[#F4F8F5] border border-[#4F6D56]/20 rounded-lg p-2.5 text-xs">
-                  <div className="font-bold text-[#4F6D56] flex items-center gap-1">
-                    <PlusCircle className="w-3.5 h-3.5" /> 1. New Core Engine
-                  </div>
-                  <p className="text-[11px] text-[#6B635A] mt-0.5 leading-snug">
-                    <span className="font-mono font-semibold text-[#242220]">SessionManager.js</span> introduced to isolate AES key storage from React state.
-                  </p>
-                </div>
-                <div className="bg-[#FFFDF9] border border-[#D08A29]/20 rounded-lg p-2.5 text-xs">
-                  <div className="font-bold text-[#D08A29] flex items-center gap-1">
-                    <RefreshCw className="w-3.5 h-3.5" /> 2. 401 Interceptor Loop
-                  </div>
-                  <p className="text-[11px] text-[#6B635A] mt-0.5 leading-snug">
-                    <span className="font-mono font-semibold text-[#242220]">ApiClient.js</span> guards failed requests with <code className="bg-white px-1 rounded">_retry</code> and queries renewal.
-                  </p>
-                </div>
-                <div className="bg-[#F4F8F5] border border-[#4F6D56]/20 rounded-lg p-2.5 text-xs">
-                  <div className="font-bold text-[#4F6D56] flex items-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5" /> 3. 14-Min Proactive Refresh
-                  </div>
-                  <p className="text-[11px] text-[#6B635A] mt-0.5 leading-snug">
-                    <span className="font-mono font-semibold text-[#242220]">SessionContext.jsx</span> polls before 15m token expiration with timer cleanup.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Diagram Canvas & Interactive Inspector */}
-          {(activeTab === 'diff' || activeTab === 'proposed' || activeTab === 'baseline') && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-              {/* Left/Center: Visual Topology Diagram */}
-              <div className="lg:col-span-8 bg-white border border-[#E6E0D5] rounded-xl p-5 shadow-xs flex flex-col">
-                <div className="flex items-center justify-between border-b border-[#F1ECE4] pb-3 mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-[#242220] uppercase tracking-wider">
-                      {activeTab === 'diff' && "Interactive Net Diagrammatical Diff"}
-                      {activeTab === 'proposed' && "Proposed Architecture Topology (After PR)"}
-                      {activeTab === 'baseline' && "Baseline Architecture Topology (Before PR)"}
-                    </span>
-                  </div>
-                  <span className="text-[11px] text-[#6B635A]">
-                    Click any node to inspect architectural contract
+                  )}
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded bg-[#F3F4F6] border border-[#6B7280]"></span>
+                    <span className="text-[#4B5563]">= Unchanged</span>
                   </span>
                 </div>
 
-                {/* Flowchart Diagram Canvas */}
-                {activeTab === 'diff' && (
-                  <div className="space-y-4 py-2">
-                    {/* Top Tier: External Auth Server */}
-                    <div className="flex justify-center">
-                      <div 
-                        onClick={() => setSelectedNodeId("API_SRV")}
-                        className={`p-3 rounded-xl border-2 transition-all cursor-pointer text-center max-w-xs w-full shadow-2xs ${
-                          selectedNodeId === 'API_SRV' ? 'ring-2 ring-[#C35832] scale-[1.02]' : ''
-                        } border-[#E6E0D5] bg-[#F9F6F0]`}
-                      >
-                        <div className="flex items-center justify-between text-[10px] font-bold text-[#6B635A] uppercase tracking-wider">
-                          <span>External Service</span>
-                          <span className="bg-[#E6E0D5] text-[#242220] px-1.5 py-0.2 rounded font-mono">= UNCHANGED</span>
-                        </div>
-                        <div className="font-bold text-xs text-[#242220] mt-0.5">Auth Server (/api/auth/rotate)</div>
-                        <div className="text-[10px] text-[#6B635A] font-mono mt-0.5">Validates refresh tokens & returns JWT</div>
-                      </div>
-                    </div>
-
-                    {/* Downward Connector to SessionManager */}
-                    <div className="flex items-center justify-center -my-2 text-[#4F6D56]">
-                      <div className="bg-[#F4F8F5] border border-[#4F6D56]/40 text-[#4F6D56] text-[10px] font-mono px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-2xs font-bold">
-                        <span>↑↓</span>
-                        <span>[NEW FLOW] POST /api/auth/rotate token exchange</span>
-                      </div>
-                    </div>
-
-                    {/* Center Tier 1: Core Engine (SessionManager & ApiClient) */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* SessionManager (Added) */}
-                      <div 
-                        onClick={() => setSelectedNodeId("SM")}
-                        className={`p-4 rounded-xl border-2 transition-all cursor-pointer relative shadow-sm ${
-                          selectedNodeId === 'SM' ? 'ring-3 ring-[#4F6D56] scale-[1.02]' : ''
-                        } border-[#4F6D56] bg-[#F4F8F5]`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] uppercase font-bold text-[#4F6D56] tracking-wider">
-                            Tier 1: Core Logic
-                          </span>
-                          <span className="text-[10px] font-extrabold bg-[#4F6D56] text-white px-2 py-0.5 rounded-full animate-pulse shadow-xs">
-                            + ADDED IN PR
-                          </span>
-                        </div>
-                        <div className="text-sm font-extrabold text-[#242220]">
-                          SessionManager.js
-                        </div>
-                        <div className="text-[11px] text-[#4F6D56] font-medium mt-1">
-                          AES Crypto Engine & LocalStorage Fallback
-                        </div>
-                        <div className="text-[10px] text-[#6B635A] font-mono mt-1 bg-white/80 p-1.5 rounded border border-[#4F6D56]/20">
-                          rotateSessionToken() • encrypt() • storageSync()
-                        </div>
-                      </div>
-
-                      {/* ApiClient (Modified) */}
-                      <div 
-                        onClick={() => setSelectedNodeId("API")}
-                        className={`p-4 rounded-xl border-2 transition-all cursor-pointer relative shadow-sm ${
-                          selectedNodeId === 'API' ? 'ring-3 ring-[#D08A29] scale-[1.02]' : ''
-                        } border-[#D08A29] bg-[#FFFDF9]`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] uppercase font-bold text-[#D08A29] tracking-wider">
-                            Tier 1: Core Logic
-                          </span>
-                          <span className="text-[10px] font-extrabold bg-[#D08A29] text-white px-2 py-0.5 rounded-full shadow-xs">
-                            ~ MODIFIED FLOW
-                          </span>
-                        </div>
-                        <div className="text-sm font-extrabold text-[#242220]">
-                          ApiClient.js
-                        </div>
-                        <div className="text-[11px] text-[#D08A29] font-medium mt-1">
-                          Axios 401 Interceptor with _retry Guard
-                        </div>
-                        <div className="text-[10px] text-[#6B635A] font-mono mt-1 bg-white/80 p-1.5 rounded border border-[#D08A29]/20">
-                          response.use(err =&gt; retry with new token)
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Bidirectional Core Renewal Connector */}
-                    <div className="flex items-center justify-center -my-1 text-[#D08A29]">
-                      <div className="bg-[#FFFDF9] border border-[#D08A29]/40 text-[#D08A29] text-[10px] font-mono px-3 py-0.5 rounded-full flex items-center gap-1 shadow-2xs font-bold">
-                        <span>←→</span>
-                        <span>[MODIFIED] On 401: ApiClient pauses & invokes SessionManager.rotateSessionToken()</span>
-                      </div>
-                    </div>
-
-                    {/* Tier 2: Consumer React Context & Protected Route */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* SessionProvider (Modified) */}
-                      <div 
-                        onClick={() => setSelectedNodeId("SC")}
-                        className={`p-4 rounded-xl border-2 transition-all cursor-pointer relative shadow-sm ${
-                          selectedNodeId === 'SC' ? 'ring-3 ring-[#D08A29] scale-[1.02]' : ''
-                        } border-[#D08A29] bg-[#FFFDF9]`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] uppercase font-bold text-[#D08A29] tracking-wider">
-                            Tier 2: Consumer
-                          </span>
-                          <span className="text-[10px] font-extrabold bg-[#D08A29] text-white px-2 py-0.5 rounded-full shadow-xs">
-                            ~ MODIFIED FLOW
-                          </span>
-                        </div>
-                        <div className="text-sm font-extrabold text-[#242220]">
-                          SessionContext.jsx
-                        </div>
-                        <div className="text-[11px] text-[#D08A29] font-medium mt-1">
-                          Proactive 14-Min Rotation Poller
-                        </div>
-                        <div className="text-[10px] text-[#6B635A] font-mono mt-1 bg-white/80 p-1.5 rounded border border-[#D08A29]/20">
-                          setInterval(rotateSessionToken, 14m)
-                        </div>
-                      </div>
-
-                      {/* ProtectedRoute (Unchanged) */}
-                      <div 
-                        onClick={() => setSelectedNodeId("PR")}
-                        className={`p-4 rounded-xl border-2 transition-all cursor-pointer relative shadow-xs ${
-                          selectedNodeId === 'PR' ? 'ring-3 ring-[#6B635A] scale-[1.02]' : ''
-                        } border-[#E6E0D5] bg-[#F9F6F0]`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] uppercase font-bold text-[#6B635A] tracking-wider">
-                            Tier 2: Consumer
-                          </span>
-                          <span className="text-[10px] font-bold bg-[#E6E0D5] text-[#242220] px-2 py-0.5 rounded-full">
-                            = UNCHANGED
-                          </span>
-                        </div>
-                        <div className="text-sm font-extrabold text-[#242220]">
-                          ProtectedRoute.jsx
-                        </div>
-                        <div className="text-[11px] text-[#6B635A] font-medium mt-1">
-                          Route Guard & Authentication Gateway
-                        </div>
-                        <div className="text-[10px] text-[#6B635A] font-mono mt-1 bg-white p-1.5 rounded border border-[#E6E0D5]">
-                          useContext(SessionContext) =&gt; {`{ user }`}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Bottom Deprecated/Eliminated Flow Callout */}
-                    <div className="bg-[#FBEFEF] border border-[#C35832]/30 rounded-xl p-3 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <MinusCircle className="w-4 h-4 text-[#C35832] flex-shrink-0" />
-                        <span className="text-[#C35832] font-semibold">
-                          <strong className="font-bold">Eliminated Fragile Flow:</strong> Hard logout redirect to <code className="bg-white px-1 rounded font-mono">/login</code> on transient 401s has been replaced by self-healing token retry!
-                        </span>
-                      </div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#C35832] bg-white px-2 py-0.5 rounded border border-[#C35832]/20">
-                        DEPRECATED
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Proposed Architecture Canvas (Clean View) */}
-                {activeTab === 'proposed' && (
-                  <div className="space-y-4 py-2">
-                    <div className="p-3 bg-[#F4F8F5] border border-[#4F6D56]/20 rounded-xl text-xs text-[#4F6D56]">
-                      💡 Complete production architecture proposed by PR #PROJ-402 with autonomous token renewal and proactive session preservation.
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {nodes.filter(n => n.id !== 'API_SRV').map((node) => (
-                        <div 
-                          key={node.id}
-                          onClick={() => setSelectedNodeId(node.id)}
-                          className={`p-4 rounded-xl border-2 transition-all cursor-pointer ${
-                            selectedNodeId === node.id ? 'ring-2 ring-[#C35832] shadow-sm' : ''
-                          } ${node.color}`}
-                        >
-                          <div className="flex items-center justify-between text-xs font-bold mb-1">
-                            <span>{node.tier}</span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${node.badgeColor}`}>
-                              {node.diffStatus === 'added' ? 'New' : node.diffStatus === 'modified' ? 'Modified' : 'Stable'}
-                            </span>
-                          </div>
-                          <div className="text-sm font-extrabold text-[#242220]">{node.title}</div>
-                          <div className="text-[11px] text-[#6B635A] font-mono mt-0.5">{node.path}</div>
-                          <p className="text-xs text-[#242220] mt-1">{node.desc}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Baseline Architecture Canvas (Legacy View) */}
-                {activeTab === 'baseline' && (
-                  <div className="space-y-4 py-2">
-                    <div className="p-3 bg-[#FFFDF9] border border-[#D08A29]/20 rounded-xl text-xs text-[#D08A29]">
-                      ⚠️ <strong>Baseline System Topology (Before PR):</strong> Lacked a central SessionManager. Tokens were read statically from storage, and any 401 response killed the user session immediately.
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="p-3.5 bg-white border border-[#E6E0D5] rounded-xl flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-bold text-[#242220]">1. ApiClient (Legacy)</div>
-                          <div className="text-[11px] text-[#6B635A]">Executed HTTP requests. On 401 error: unconditionally rejected promise and wiped session.</div>
-                        </div>
-                        <span className="text-[10px] text-[#C35832] bg-[#FBEFEF] px-2 py-0.5 rounded font-bold">Hard Kill on 401</span>
-                      </div>
-
-                      <div className="flex justify-center text-[#6B635A] text-xs">↓ Directly bound without retry guard</div>
-
-                      <div className="p-3.5 bg-white border border-[#E6E0D5] rounded-xl flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-bold text-[#242220]">2. /login Eviction Branch (Legacy)</div>
-                          <div className="text-[11px] text-[#6B635A]">Forced page reload and full user re-authentication on every network token expiration.</div>
-                        </div>
-                        <span className="text-[10px] text-[#C35832] bg-[#FBEFEF] px-2 py-0.5 rounded font-bold">Session Eviction</span>
-                      </div>
-
-                      <div className="flex justify-center text-[#6B635A] text-xs">↓</div>
-
-                      <div className="p-3.5 bg-white border border-[#E6E0D5] rounded-xl flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-bold text-[#242220]">3. ProtectedRoute & Context (Legacy)</div>
-                          <div className="text-[11px] text-[#6B635A]">Read raw string from localStorage.getItem('token') with zero encryption or rotation.</div>
-                        </div>
-                        <span className="text-[10px] text-[#6B635A] bg-[#F1ECE4] px-2 py-0.5 rounded font-bold">Static Token</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <div className="flex items-center gap-1 text-[11px] text-[#6B635A]">
+                  <MousePointer className="w-3 h-3" />
+                  <span>Click any card to inspect & jump to code</span>
+                </div>
               </div>
 
-              {/* Right: Component Contract & Net Impact Inspector */}
-              <div className="lg:col-span-4 bg-white border border-[#E6E0D5] rounded-xl p-5 shadow-xs flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-center justify-between border-b border-[#F1ECE4] pb-3">
-                    <span className="text-xs font-bold text-[#6B635A] uppercase tracking-wider">
-                      Node Details
-                    </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${selectedNode.badgeColor}`}>
-                      {selectedNode.badge}
-                    </span>
-                  </div>
+              {/* Excalidraw Visual Diagram (SVG Layout) */}
+              <div className="relative z-10">
+                <svg viewBox="0 0 820 440" className="w-full h-auto drop-shadow-xs">
+                  <defs>
+                    {/* SVG Arrowhead Markers */}
+                    <marker id="arrow-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 0 1 L 10 5 L 0 9 z" fill="#2D6A4F" />
+                    </marker>
+                    <marker id="arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 0 1 L 10 5 L 0 9 z" fill="#D97706" />
+                    </marker>
+                    <marker id="arrow-gray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 0 1 L 10 5 L 0 9 z" fill="#6B7280" />
+                    </marker>
+                    <marker id="arrow-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 0 1 L 10 5 L 0 9 z" fill="#DC2626" />
+                    </marker>
+                  </defs>
 
-                  <div className="mt-3">
-                    <h3 className="text-base font-bold text-[#242220]">
-                      {selectedNode.title}
-                    </h3>
-                    <div className="text-[11px] font-mono text-[#C35832] bg-[#FBEFEF] px-2 py-0.5 rounded inline-block mt-1">
-                      {selectedNode.path}
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 mt-4 text-xs">
-                    <div>
-                      <div className="font-bold text-[#6B635A] uppercase text-[10px] tracking-wider">
-                        Architectural Role:
-                      </div>
-                      <p className="text-[#242220] mt-0.5 leading-relaxed">
-                        {selectedNode.archRole}
-                      </p>
-                    </div>
-
-                    <div>
-                      <div className="font-bold text-[#6B635A] uppercase text-[10px] tracking-wider">
-                        Design Rationale:
-                      </div>
-                      <p className="text-[#242220] mt-0.5 leading-relaxed">
-                        {selectedNode.rationale}
-                      </p>
-                    </div>
-
-                    <div className="bg-[#F9F6F0] border border-[#E6E0D5] rounded-lg p-3">
-                      <div className="text-[10px] font-bold text-[#6B635A] uppercase tracking-wider mb-1">
-                        Impact on Codebase:
-                      </div>
-                      <p className="text-[11px] text-[#242220] leading-snug">
-                        {selectedNode.diffStatus === 'added' && "New standalone service introduced. Clean single responsibility pattern."}
-                        {selectedNode.diffStatus === 'modified' && "Idempotency guaranteed via _retry guard to eliminate infinite loops."}
-                        {selectedNode.diffStatus === 'unchanged' && "Stable upstream API consumer contract remains intact."}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-[#F1ECE4]">
-                  {selectedNode.path.startsWith('src/') ? (
-                    <button
-                      onClick={() => {
-                        if (onSelectNodeFile) {
-                          onSelectNodeFile(selectedNode.path);
-                          onClose();
-                        }
-                      }}
-                      className="w-full py-2.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-                    >
-                      <span>Focus File Diff in Editor</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
-                    <div className="text-center text-xs text-[#6B635A] py-2">
-                      External endpoint contract
-                    </div>
+                  {/* ================= CONNECTORS / ARROWS ================= */}
+                  {/* Auth Server <-> SessionManager */}
+                  {(activeTab === 'sketch' || activeTab === 'proposed') && (
+                    <g>
+                      <path d="M 410 75 L 410 150" stroke="#2D6A4F" strokeWidth="2.5" markerEnd="url(#arrow-green)" fill="none" />
+                      <rect x="345" y="100" width="130" height="22" rx="6" fill="#EBF7EE" stroke="#2D6A4F" strokeWidth="1" />
+                      <text x="410" y="115" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#1B4332">POST /api/auth/rotate</text>
+                    </g>
                   )}
-                </div>
+
+                  {/* SessionProvider -> SessionManager (14-min timer) */}
+                  {(activeTab === 'sketch' || activeTab === 'proposed') && (
+                    <g>
+                      <path d="M 230 195 C 270 195, 270 195, 305 195" stroke="#D97706" strokeWidth="2.5" markerEnd="url(#arrow-amber)" fill="none" />
+                      <rect x="235" y="165" width="70" height="20" rx="5" fill="#FFF8E7" stroke="#D97706" strokeWidth="1" />
+                      <text x="270" y="179" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#92400E">14m timer</text>
+                    </g>
+                  )}
+
+                  {/* ApiClient -> SessionManager (401 retry) */}
+                  {(activeTab === 'sketch' || activeTab === 'proposed') && (
+                    <g>
+                      <path d="M 590 195 C 550 195, 550 195, 515 195" stroke="#D97706" strokeWidth="2.5" markerEnd="url(#arrow-amber)" fill="none" />
+                      <rect x="520" y="165" width="65" height="20" rx="5" fill="#FFF8E7" stroke="#D97706" strokeWidth="1" />
+                      <text x="552" y="179" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#92400E">401 retry</text>
+                    </g>
+                  )}
+
+                  {/* ProtectedRoute -> SessionProvider (reads user) */}
+                  <g>
+                    <path d="M 125 315 L 125 240" stroke="#6B7280" strokeWidth="2" markerEnd="url(#arrow-gray)" fill="none" />
+                    <rect x="75" y="265" width="100" height="20" rx="5" fill="#F3F4F6" stroke="#6B7280" strokeWidth="1" />
+                    <text x="125" y="279" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#374151">reads user context</text>
+                  </g>
+
+                  {/* ApiClient -> Protected REST APIs */}
+                  <g>
+                    <path d="M 695 240 L 695 315" stroke="#6B7280" strokeWidth="2" markerEnd="url(#arrow-gray)" fill="none" />
+                    <rect x="650" y="265" width="90" height="20" rx="5" fill="#F3F4F6" stroke="#6B7280" strokeWidth="1" />
+                    <text x="695" y="279" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#374151">Bearer JWT</text>
+                  </g>
+
+                  {/* Deprecated Flow: ApiClient -> Hard /login (Removed in PR) */}
+                  {(activeTab === 'sketch' || activeTab === 'baseline') && (
+                    <g>
+                      <path d="M 600 240 L 490 315" stroke="#DC2626" strokeWidth="2" strokeDasharray="5,5" markerEnd="url(#arrow-red)" fill="none" />
+                      <rect x="495" y="265" width="95" height="20" rx="5" fill="#FEE2E2" stroke="#DC2626" strokeWidth="1" />
+                      <text x="542" y="279" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#991B1B">
+                        {activeTab === 'sketch' ? '❌ hard logout' : 'hard logout'}
+                      </text>
+                    </g>
+                  )}
+
+                  {/* Baseline direct flow (if baseline view) */}
+                  {activeTab === 'baseline' && (
+                    <g>
+                      <path d="M 230 195 L 590 195" stroke="#6B7280" strokeWidth="2" strokeDasharray="4,4" markerEnd="url(#arrow-gray)" fill="none" />
+                      <rect x="365" y="185" width="90" height="20" rx="5" fill="#F3F4F6" stroke="#6B7280" strokeWidth="1" />
+                      <text x="410" y="199" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#374151">static token</text>
+                    </g>
+                  )}
+
+                  {/* ================= NODES / BOXES ================= */}
+
+                  {/* 1. Auth Server (Top Center) */}
+                  <g 
+                    onClick={() => setSelectedNode('AUTH')}
+                    className="cursor-pointer"
+                  >
+                    <rect 
+                      x="310" y="20" width="200" height="55" rx="10" 
+                      fill="#FFFFFF" stroke={selectedNode === 'AUTH' ? '#C35832' : '#6B7280'} 
+                      strokeWidth={selectedNode === 'AUTH' ? '3' : '2'}
+                    />
+                    <text x="410" y="44" textAnchor="middle" fontSize="13" fontWeight="bold" fill="#1F2937">Auth Server</text>
+                    <text x="410" y="60" textAnchor="middle" fontSize="10" fill="#6B7280">/api/auth/rotate</text>
+                  </g>
+
+                  {/* 2. SessionManager (Center - NEW) */}
+                  {(activeTab === 'sketch' || activeTab === 'proposed') && (
+                    <g 
+                      onClick={() => setSelectedNode('SM')}
+                      className="cursor-pointer"
+                    >
+                      {/* Drop shadow sketch effect */}
+                      <rect x="314" y="154" width="192" height="82" rx="12" fill="#E6E0D5" opacity="0.6" />
+                      <rect 
+                        x="310" y="150" width="200" height="85" rx="12" 
+                        fill="#EBF7EE" stroke={selectedNode === 'SM' ? '#1B4332' : '#2D6A4F'} 
+                        strokeWidth={selectedNode === 'SM' ? '3.5' : '2.5'}
+                      />
+                      <rect x="420" y="158" width="80" height="18" rx="5" fill="#2D6A4F" />
+                      <text x="460" y="171" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#FFFFFF">+ NEW NODE</text>
+                      <text x="325" y="180" fontSize="14" fontWeight="800" fill="#1B4332">SessionManager</text>
+                      <text x="325" y="198" fontSize="10.5" fontWeight="600" fill="#2D6A4F">AES Key Storage & Rotation</text>
+                      <text x="325" y="218" fontSize="9.5" fontStyle="italic" fill="#52796F">localStorage fallback cache</text>
+                    </g>
+                  )}
+
+                  {/* 3. SessionProvider (Left Center - MODIFIED) */}
+                  <g 
+                    onClick={() => setSelectedNode('SC')}
+                    className="cursor-pointer"
+                  >
+                    <rect x="24" y="154" width="202" height="82" rx="12" fill="#E6E0D5" opacity="0.6" />
+                    <rect 
+                      x="20" y="150" width="210" height="85" rx="12" 
+                      fill={activeTab === 'baseline' ? '#FFFFFF' : '#FFF8E7'} 
+                      stroke={selectedNode === 'SC' ? '#78350F' : activeTab === 'baseline' ? '#6B7280' : '#D97706'} 
+                      strokeWidth={selectedNode === 'SC' ? '3.5' : '2.5'}
+                    />
+                    {activeTab !== 'baseline' && (
+                      <>
+                        <rect x="140" y="158" width="80" height="18" rx="5" fill="#D97706" />
+                        <text x="180" y="171" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#FFFFFF">~ MODIFIED</text>
+                      </>
+                    )}
+                    <text x="35" y="180" fontSize="14" fontWeight="800" fill="#78350F">SessionProvider</text>
+                    <text x="35" y="198" fontSize="10.5" fontWeight="600" fill="#92400E">React User Context</text>
+                    <text x="35" y="218" fontSize="9.5" fontStyle="italic" fill="#B45309">
+                      {activeTab === 'baseline' ? 'Passive localStorage read' : '14m proactive interval timer'}
+                    </text>
+                  </g>
+
+                  {/* 4. ApiClient (Right Center - MODIFIED) */}
+                  <g 
+                    onClick={() => setSelectedNode('API')}
+                    className="cursor-pointer"
+                  >
+                    <rect x="594" y="154" width="202" height="82" rx="12" fill="#E6E0D5" opacity="0.6" />
+                    <rect 
+                      x="590" y="150" width="210" height="85" rx="12" 
+                      fill={activeTab === 'baseline' ? '#FFFFFF' : '#FFF8E7'} 
+                      stroke={selectedNode === 'API' ? '#78350F' : activeTab === 'baseline' ? '#6B7280' : '#D97706'} 
+                      strokeWidth={selectedNode === 'API' ? '3.5' : '2.5'}
+                    />
+                    {activeTab !== 'baseline' && (
+                      <>
+                        <rect x="710" y="158" width="80" height="18" rx="5" fill="#D97706" />
+                        <text x="750" y="171" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#FFFFFF">~ MODIFIED</text>
+                      </>
+                    )}
+                    <text x="605" y="180" fontSize="14" fontWeight="800" fill="#78350F">ApiClient</text>
+                    <text x="605" y="198" fontSize="10.5" fontWeight="600" fill="#92400E">Axios HTTP Client</text>
+                    <text x="605" y="218" fontSize="9.5" fontStyle="italic" fill="#B45309">
+                      {activeTab === 'baseline' ? 'No retry logic' : '401 interceptor & _retry guard'}
+                    </text>
+                  </g>
+
+                  {/* 5. ProtectedRoute (Bottom Left - UNCHANGED) */}
+                  <g 
+                    onClick={() => setSelectedNode('PR')}
+                    className="cursor-pointer"
+                  >
+                    <rect 
+                      x="25" y="320" width="200" height="60" rx="10" 
+                      fill="#FFFFFF" stroke={selectedNode === 'PR' ? '#C35832' : '#6B7280'} 
+                      strokeWidth={selectedNode === 'PR' ? '3' : '2'}
+                    />
+                    <text x="125" y="345" textAnchor="middle" fontSize="13" fontWeight="bold" fill="#1F2937">ProtectedRoute.jsx</text>
+                    <text x="125" y="362" textAnchor="middle" fontSize="10" fill="#6B7280">Route guard checking auth state</text>
+                  </g>
+
+                  {/* 6. Protected REST APIs (Bottom Right - UNCHANGED) */}
+                  <g 
+                    onClick={() => setSelectedNode('REST')}
+                    className="cursor-pointer"
+                  >
+                    <rect 
+                      x="595" y="320" width="200" height="60" rx="10" 
+                      fill="#FFFFFF" stroke={selectedNode === 'REST' ? '#C35832' : '#6B7280'} 
+                      strokeWidth={selectedNode === 'REST' ? '3' : '2'}
+                    />
+                    <text x="695" y="345" textAnchor="middle" fontSize="13" fontWeight="bold" fill="#1F2937">Protected REST APIs</text>
+                    <text x="695" y="362" textAnchor="middle" fontSize="10" fill="#6B7280">Backend business endpoints</text>
+                  </g>
+
+                  {/* 7. Eliminated Hard /login Flow (Bottom Center - REMOVED) */}
+                  {(activeTab === 'sketch' || activeTab === 'baseline') && (
+                    <g 
+                      onClick={() => setSelectedNode('KILL')}
+                      className="cursor-pointer"
+                    >
+                      <rect 
+                        x="375" y="320" width="170" height="60" rx="10" 
+                        fill="#FEE2E2" stroke="#DC2626" 
+                        strokeWidth="2" strokeDasharray="5,5"
+                      />
+                      <text x="460" y="345" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#991B1B">
+                        {activeTab === 'sketch' ? '❌ /login Eviction' : '/login Eviction'}
+                      </text>
+                      <text x="460" y="362" textAnchor="middle" fontSize="9.5" fill="#DC2626">
+                        {activeTab === 'sketch' ? 'Deprecated hard logout' : 'Immediate session kill'}
+                      </text>
+                    </g>
+                  )}
+                </svg>
               </div>
             </div>
-          )}
-
-          {/* Mermaid Syntax Diff Tab */}
-          {activeTab === 'code' && (
-            <div className="bg-white border border-[#E6E0D5] rounded-xl p-5 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-[#F1ECE4] pb-3">
-                <div>
-                  <h3 className="text-sm font-bold text-[#242220]">
-                    Mermaid Diagram Source Code
-                  </h3>
-                  <p className="text-xs text-[#6B635A] mt-0.5">
-                    Copy and paste directly into GitHub PR descriptions, ARCHITECTURE.md, or Notion documentation.
-                  </p>
-                </div>
+          ) : (
+            /* Clean Mermaid Code View */
+            <div className="w-full max-w-4xl bg-white border border-[#E6E0D5] rounded-2xl p-5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between border-b border-[#F1ECE4] pb-2">
+                <span className="text-xs font-bold text-[#242220]">Mermaid Diagram Syntax</span>
                 <button
                   onClick={() => handleCopy(diffMermaid || proposedMermaid)}
-                  className="px-3 py-1.5 bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] text-xs font-bold rounded-lg border border-[#E6E0D5] flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="px-3 py-1 bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] text-xs font-bold rounded-lg border border-[#E6E0D5] flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  {copied ? <CheckCircle className="w-4 h-4 text-[#4F6D56]" /> : <Copy className="w-4 h-4" />}
-                  <span>{copied ? "Copied!" : "Copy Mermaid Diff"}</span>
+                  {copied ? <CheckCircle className="w-3.5 h-3.5 text-[#4F6D56]" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copied ? "Copied!" : "Copy Syntax"}</span>
                 </button>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <div className="text-xs font-bold text-[#4F6D56] mb-1.5 flex items-center gap-1">
-                    <span>Proposed Architecture (After PR)</span>
-                  </div>
-                  <pre className="bg-[#242220] text-[#E6E0D5] p-4 rounded-xl text-xs font-mono leading-relaxed overflow-x-auto max-h-[360px]">
-                    {proposedMermaid}
-                  </pre>
-                </div>
-
-                <div>
-                  <div className="text-xs font-bold text-[#C35832] mb-1.5 flex items-center gap-1">
-                    <span>Baseline Architecture (Before PR)</span>
-                  </div>
-                  <pre className="bg-[#242220] text-[#E6E0D5] p-4 rounded-xl text-xs font-mono leading-relaxed overflow-x-auto max-h-[360px]">
-                    {baselineMermaid}
-                  </pre>
-                </div>
-              </div>
+              <pre className="bg-[#1E1E1E] text-[#D4D4D4] p-4 rounded-xl text-xs font-mono leading-relaxed overflow-x-auto max-h-[360px]">
+                {diffMermaid || proposedMermaid}
+              </pre>
             </div>
           )}
 
-          {/* Itemized Net Architectural Changes List */}
-          <div className="bg-white border border-[#E6E0D5] rounded-xl p-5 shadow-xs space-y-3">
-            <div className="flex items-center justify-between border-b border-[#F1ECE4] pb-2.5">
-              <span className="text-xs font-bold text-[#242220] uppercase tracking-wider flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-[#4F6D56]" />
-                <span>Itemized Net Architectural Changes ({netChanges?.changes?.length || 5} Total)</span>
+          {/* Minimal Selected Node Bar (No Paragraphs, Just 1-Line Info & Jump Action) */}
+          <div className="w-full max-w-4xl mt-3 bg-white border border-[#E6E0D5] rounded-xl px-4 py-2.5 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border uppercase tracking-wider ${activeNodeInfo.badgeColor}`}>
+                {activeNodeInfo.badge}
               </span>
-              <span className="text-xs text-[#6B635A]">
-                Derived from AST dependency comparison
+              <span className="text-xs font-extrabold text-[#242220]">
+                {activeNodeInfo.name}
+              </span>
+              <span className="text-xs text-[#6B635A] hidden md:inline">
+                • {activeNodeInfo.summary}
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {(netChanges?.changes || []).map((ch) => (
-                <div 
-                  key={ch.id} 
-                  onClick={() => {
-                    if (ch.nodeId) setSelectedNodeId(ch.nodeId);
-                  }}
-                  className="p-3 rounded-lg border border-[#E6E0D5] hover:border-[#C35832]/40 bg-[#FFFDF9] hover:bg-white transition-all cursor-pointer text-xs space-y-1.5"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-[#242220]">{ch.title}</span>
-                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${ch.badgeColor}`}>
-                      {ch.badge}
-                    </span>
-                  </div>
-                  <div className="text-[10px] font-mono text-[#6B635A] truncate">
-                    {ch.target}
-                  </div>
-                  <p className="text-[11px] text-[#6B635A] leading-snug">
-                    {ch.description}
-                  </p>
-                  <div className="text-[10px] text-[#C35832] font-semibold flex items-center gap-1 pt-1 border-t border-[#F1ECE4]">
-                    <span>Impact:</span> {ch.diagrammaticImpact}
-                  </div>
-                </div>
-              ))}
-            </div>
+            {activeNodeInfo.path ? (
+              <button
+                onClick={() => {
+                  if (onSelectNodeFile) {
+                    onSelectNodeFile(activeNodeInfo.path);
+                    onClose();
+                  }
+                }}
+                className="px-3 py-1.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 flex-shrink-0 cursor-pointer shadow-2xs self-end sm:self-center"
+              >
+                <span>Jump to File Diff</span>
+                <ExternalLink className="w-3 h-3" />
+              </button>
+            ) : (
+              <span className="text-[11px] text-[#6B635A] italic">External system</span>
+            )}
           </div>
         </div>
 
-        {/* Modal Bottom Footer */}
-        <div className="px-6 py-3.5 border-t border-[#F1ECE4] bg-white flex items-center justify-between">
-          <div className="text-xs text-[#6B635A]">
-            💡 <span className="font-semibold">Reviewer Insight:</span> The proposed architecture adheres to OAuth2 sliding session security principles.
-          </div>
+        {/* Minimal Footer */}
+        <div className="px-6 py-2.5 border-t border-[#E6E0D5] bg-white flex items-center justify-between text-xs text-[#6B635A]">
+          <span>PR #PROJ-402: Token Rotation & LocalStorage Fallback</span>
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-[#242220] hover:bg-[#3D3A36] text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+            className="px-4 py-1.5 bg-[#242220] hover:bg-[#3D3A36] text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
           >
-            Close Diagram
+            Close
           </button>
         </div>
       </div>

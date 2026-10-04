@@ -50,42 +50,27 @@ export default function DynamicLeftPanel({
 
     return (
       <div className="space-y-4">
-        {/* Prominent Visual Architecture Diagram & Net Diff Launcher Card */}
-        <div className="bg-gradient-to-br from-[#FFFDF9] to-[#F9F6F0] border-2 border-[#C35832]/40 rounded-xl p-4 shadow-xs">
+        {/* Excalidraw Architecture Diagram Launcher Card */}
+        <div className="bg-[#FFFDF9] border-2 border-[#C35832]/30 rounded-xl p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-[#C35832] bg-[#FBEFEF] px-2 py-0.5 rounded border border-[#C35832]/20 flex items-center gap-1">
-              <Layers className="w-3.5 h-3.5" /> Architecture Topology
+            <span className="text-xs font-bold text-[#C35832] flex items-center gap-1.5">
+              <span>📐</span> Excalidraw Architecture
             </span>
-            <span className="text-[10px] font-bold bg-[#F4F8F5] text-[#4F6D56] px-2 py-0.5 rounded border border-[#4F6D56]/20">
-              Visual Net Diff Available
+            <span className="text-[10px] font-bold bg-[#EBF7EE] text-[#2D6A4F] px-2 py-0.5 rounded border border-[#2D6A4F]/20">
+              Visual Net Diff
             </span>
           </div>
 
-          <h2 className="text-sm font-bold text-[#242220] mt-2.5 leading-snug">
-            System Architecture & Net Changes
-          </h2>
-          <p className="text-[11px] text-[#6B635A] mt-1 leading-relaxed">
-            PR #PROJ-402 alters component topology. View the interactive diagram showing new modules, modified 401 retry loops, and proactive timers.
+          <p className="text-xs text-[#6B635A] mt-1.5 leading-snug">
+            Whiteboard sketch showing added, modified, and removed component flows.
           </p>
-
-          <div className="flex items-center gap-1.5 my-3 flex-wrap">
-            <span className="text-[10px] font-bold bg-[#F4F8F5] text-[#4F6D56] px-2 py-0.5 rounded border border-[#4F6D56]/30">
-              +1 New Module
-            </span>
-            <span className="text-[10px] font-bold bg-[#FFFDF9] text-[#D08A29] px-2 py-0.5 rounded border border-[#D08A29]/30">
-              ~2 Modified Flows
-            </span>
-            <span className="text-[10px] font-bold bg-[#FBEFEF] text-[#C35832] px-2 py-0.5 rounded border border-[#C35832]/30">
-              -1 Dead Loop
-            </span>
-          </div>
 
           <button
             onClick={onOpenArchModal}
-            className="w-full py-2.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer group"
+            className="w-full mt-3 py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
           >
-            <span>Launch Diagram & Net Diff Modal</span>
-            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+            <span>Open Excalidraw Diagram</span>
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
