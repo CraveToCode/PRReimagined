@@ -162,9 +162,10 @@ export default function HierarchicalDiffViewer({
           const isExpanded = expandedFiles[file.id] !== false;
 
           let tierBadgeColor = "bg-[#FBEFEF] text-[#C35832] border-[#C35832]/20";
-          if (file.tier && file.tier.includes("Tier 2")) {
+          const tierStr = String(file.tier || '');
+          if (tierStr.includes("2")) {
             tierBadgeColor = "bg-[#FFFDF9] text-[#D08A29] border-[#D08A29]/20";
-          } else if (file.tier && file.tier.includes("Tier 3")) {
+          } else if (tierStr.includes("3")) {
             tierBadgeColor = "bg-[#F4F8F5] text-[#4F6D56] border-[#4F6D56]/20";
           }
 
@@ -259,7 +260,7 @@ export default function HierarchicalDiffViewer({
                   />
 
                   {/* Diff Viewer */}
-                  {file.diffChunks && (
+                  {Array.isArray(file.diffChunks) && file.diffChunks.length > 0 ? (
                     <div className="border border-[#E6E0D5] rounded-xl overflow-hidden font-mono text-xs shadow-inner">
                       {file.diffChunks.map((chunk, chunkIdx) => (
                         <div key={chunkIdx} className="border-b border-[#F1ECE4] last:border-0">
@@ -377,6 +378,10 @@ export default function HierarchicalDiffViewer({
                           </div>
                         </div>
                       ))} 
+                    </div>
+                  ) : (
+                    <div className="border border-[#E6E0D5] rounded-xl p-4 font-mono text-xs bg-white text-[#242220] whitespace-pre-wrap">
+                      {file.diff || 'No diff content available for this file.'}
                     </div>
                   )}
                 </div>

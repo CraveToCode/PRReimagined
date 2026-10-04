@@ -22,7 +22,58 @@ import AuthModal from './components/AuthModal';
 import QuerySelectorModal from './components/QuerySelectorModal';
 import { Award, CheckCircle, AlertTriangle, Sparkles, ArrowRight, ShieldAlert, MessageSquare, Send, Check } from 'lucide-react';
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("PR Quest render error:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-[#F9F6F0] flex items-center justify-center p-6 text-center">
+          <div className="bg-white border border-[#E6E0D5] rounded-2xl p-8 max-w-lg shadow-xl space-y-4">
+            <span className="text-4xl">⚔️</span>
+            <h2 className="text-lg font-bold text-[#242220]">Review Session Restored</h2>
+            <p className="text-xs text-[#6B635A]">
+              We encountered an issue reading state:
+            </p>
+            <p className="text-xs text-[#C35832] font-mono bg-[#FFF8F6] p-3 rounded-lg border border-[#F7D8D0] text-left overflow-x-auto">
+              {this.state.error?.message || 'Application render error'}
+            </p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => {
+                  localStorage.clear();
+                  window.location.href = '/?query=PR-101';
+                }}
+                className="px-5 py-2.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                Reset Storage & Reload PR-101
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
+
+function AppContent() {
   // --- Auth & User State ---
   const [currentUser, setCurrentUser] = useState(() => api.currentUser || PRESET_USERS[0]);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -98,15 +149,34 @@ export default function App() {
       setCurrentQueryTitle(title || `PR #${queryId}`);
 
       if (state) {
-        if (state.jiraTicket) setJiraTicket(state.jiraTicket);
-        if (state.files && Array.isArray(state.files)) {
-          setFiles(state.files);
-          setActiveFileId(state.files[0]?.id || null);
+        if (state.jiraTicket) {
+          setJiraTicket({
+            ...initialJiraTicket,
+            ...state.jiraTicket,
+            criteria: Array.isArray(state.jiraTicket.criteria) ? state.jiraTicket.criteria : initialJiraTicket.criteria
+          });
         }
-        if (state.standards) setStandards(state.standards);
-        if (state.auditedSymbols) setAuditedSymbols(state.auditedSymbols);
-        if (state.testSuites) setTestSuites(state.testSuites);
-        if (state.verdicts) setVerdicts(state.verdicts);
+        if (state.files && Array.isArray(state.files)) {
+          const safeFiles = state.files.map(f => {
+            const canonical = initialFiles.find(cf => cf.id === f.id || cf.path === f.path);
+            return {
+              ...canonical,
+              ...f,
+              tier: String(f.tier || canonical?.tier || 'Tier 1: Core Logic'),
+              importance: typeof f.importance === 'number' ? f.importance : (canonical?.importance || 80),
+              diffChunks: Array.isArray(f.diffChunks) && f.diffChunks.length > 0 
+                ? f.diffChunks 
+                : (canonical?.diffChunks || []),
+              comments: Array.isArray(f.comments) ? f.comments : []
+            };
+          });
+          setFiles(safeFiles);
+          setActiveFileId(safeFiles[0]?.id || null);
+        }
+        if (state.standards && Array.isArray(state.standards)) setStandards(state.standards);
+        if (state.auditedSymbols && Array.isArray(state.auditedSymbols)) setAuditedSymbols(state.auditedSymbols);
+        if (state.testSuites && Array.isArray(state.testSuites)) setTestSuites(state.testSuites);
+        if (state.verdicts && Array.isArray(state.verdicts)) setVerdicts(state.verdicts);
       }
 
       if (userProgress) {
