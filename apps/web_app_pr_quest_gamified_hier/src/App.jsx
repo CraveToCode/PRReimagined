@@ -16,7 +16,6 @@ import {
 import QuestHeader from './components/QuestHeader';
 import DynamicLeftPanel from './components/DynamicLeftPanel';
 import HierarchicalDiffViewer from './components/HierarchicalDiffViewer';
-import BlastRadiusPanel from './components/BlastRadiusPanel';
 import FunctionInspectorPanel from './components/FunctionInspectorPanel';
 import TestReviewWorkspace from './components/TestReviewWorkspace';
 import ArchitectureModal from './components/ArchitectureModal';
@@ -503,30 +502,20 @@ export default function App() {
                 </section>
               </>
             ) : (
-              /* Level 1 & 2 Standard Workspace: Center Diff Viewer + Right Blast Radius Panel */
-              <>
-                <section className="lg:col-span-6">
-                  <HierarchicalDiffViewer 
-                    files={files} 
-                    selectedSpec={selectedSpec} 
-                    activeFileId={activeFileId} 
-                    setActiveFileId={setActiveFileId} 
-                    onUpdateFileStatus={handleUpdateFileStatus} 
-                    onAddComment={handleAddComment} 
-                    onAddXp={handleAddXp}
-                    level={level}
-                    onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
-                  />
-                </section>
-
-                <section className="lg:col-span-3">
-                  <BlastRadiusPanel 
-                    activeFile={activeFile} 
-                    references={references} 
-                    onSelectFileByPath={handleSelectFileByPath} 
-                  />
-                </section>
-              </>
+              /* Level 1 & 2 Workspace: Wide, Distraction-Free Diff Viewer */
+              <section className="lg:col-span-9">
+                <HierarchicalDiffViewer 
+                  files={files} 
+                  selectedSpec={selectedSpec} 
+                  activeFileId={activeFileId} 
+                  setActiveFileId={setActiveFileId} 
+                  onUpdateFileStatus={handleUpdateFileStatus} 
+                  onAddComment={handleAddComment} 
+                  onAddXp={handleAddXp}
+                  level={level}
+                  onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
+                />
+              </section>
             )}
           </div>
         )}
