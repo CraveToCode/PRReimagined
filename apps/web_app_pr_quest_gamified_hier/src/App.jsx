@@ -89,12 +89,17 @@ function AppContent() {
   const [isQuerySelectorOpen, setIsQuerySelectorOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState('saved'); // 'saved' | 'syncing' | 'offline'
 
-  // --- GitHub Open PR Browser ---
+  // --- GitHub Open PR Browser + OAuth ---
   const [githubRepoUrl, setGithubRepoUrl] = useState(() => localStorage.getItem('pr_quest_github_repo') || '');
   const [githubPullRequests, setGithubPullRequests] = useState([]);
   const [githubLoading, setGithubLoading] = useState(false);
   const [githubError, setGithubError] = useState('');
   const [githubPrLoading, setGithubPrLoading] = useState(false);
+  const [githubStatus, setGithubStatus] = useState({ linked: false, login: null, avatarUrl: null, configured: false });
+  const [githubBusy, setGithubBusy] = useState(false);
+  const [myRepos, setMyRepos] = useState([]);
+  const [myReposLoading, setMyReposLoading] = useState(false);
+  const [githubMeta, setGithubMeta] = useState(null);
 
   // --- Review Workspace State ---
   const [level, setLevel] = useState(1);
@@ -128,6 +133,32 @@ function AppContent() {
 
   const isInitialLoad = useRef(true);
 
+  const refreshGithubStatus = async () => {
+    const status = await api.getGithubStatus();
+    setGithubStatus(status);
+    return status;
+  };
+
+  const pushQuestLog = (text) => {
+    setQuestLogs(prev => [
+      { id: Date.now() + Math.random(), text, timestamp: new Date().toLocaleTimeString() },
+      ...prev
+    ].slice(0, 8));
+  };
+
+  const logGithubSync = (githubSync, kind = 'comment') => {
+    if (!githubSync || !githubSync.attempted) return;
+    if (githubSync.synced) {
+      pushQuestLog(
+        kind === 'verdict'
+          ? `Synced verdict to GitHub (${githubSync.event || 'review'})`
+          : `Synced ${kind} to GitHub`
+      );
+    } else if (githubSync.error) {
+      pushQuestLog(`GitHub sync failed: ${githubSync.error}`);
+    }
+  };
+
   // --- Load Initial Query & Setup ---
   useEffect(() => {
     async function init() {
@@ -146,6 +177,29 @@ function AppContent() {
             setGithubPullRequests(parsed);
           }
         } catch (_) {}
+      }
+
+      const status = await refreshGithubStatus();
+
+      // OAuth callback landing: ?github=linked | error
+      const params = new URLSearchParams(window.location.search);
+      const githubParam = params.get('github');
+      if (githubParam === 'linked') {
+        pushQuestLog(`GitHub linked as @${status.login || 'user'}`);
+        params.delete('github');
+        params.delete('message');
+        const next = new URL(window.location.href);
+        next.search = params.toString();
+        window.history.replaceState({}, '', next);
+        setIsAuthOpen(true);
+      } else if (githubParam === 'error') {
+        const msg = params.get('message') || 'GitHub link failed';
+        pushQuestLog(`GitHub link error: ${msg}`);
+        params.delete('github');
+        params.delete('message');
+        const next = new URL(window.location.href);
+        next.search = params.toString();
+        window.history.replaceState({}, '', next);
       }
 
       await loadQueryState(currentQueryId, currentUser);
@@ -205,6 +259,9 @@ function AppContent() {
         if (state.auditedSymbols && Array.isArray(state.auditedSymbols)) setAuditedSymbols(state.auditedSymbols);
         if (state.testSuites && Array.isArray(state.testSuites)) setTestSuites(state.testSuites);
         if (state.verdicts && Array.isArray(state.verdicts)) setVerdicts(state.verdicts);
+        if (state.githubMeta) setGithubMeta(state.githubMeta);
+        else if (String(queryId).startsWith('GH-')) setGithubMeta(state.meta || null);
+        else setGithubMeta(null);
       }
 
       if (userProgress) {
@@ -241,7 +298,8 @@ function AppContent() {
         repoDocs,
         auditedSymbols,
         testSuites,
-        verdicts
+        verdicts,
+        githubMeta
       };
       const progressObj = {
         level,
@@ -254,18 +312,17 @@ function AppContent() {
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [currentQueryId, currentQueryTitle, jiraTicket, files, standards, architectureText, repoDocs, auditedSymbols, testSuites, verdicts, level, unlockedLevel, xp, awardedActions]);
+  }, [currentQueryId, currentQueryTitle, jiraTicket, files, standards, architectureText, repoDocs, auditedSymbols, testSuites, verdicts, githubMeta, level, unlockedLevel, xp, awardedActions]);
 
   // --- Persona Switch Handler ---
   const handleSelectPersona = async (personaId) => {
     const res = await api.login({ personaId });
     if (res.success && res.user) {
       setCurrentUser(res.user);
-      setQuestLogs(prev => [
-        { id: Date.now(), text: `👤 Switched reviewer to: ${res.user.name} (${res.user.role})`, timestamp: new Date().toLocaleTimeString() },
-        ...prev
-      ].slice(0, 5));
+      pushQuestLog(`Switched reviewer to: ${res.user.name} (${res.user.role})`);
       await loadQueryState(currentQueryId, res.user);
+      await refreshGithubStatus();
+      setMyRepos([]);
     }
   };
 
@@ -274,6 +331,8 @@ function AppContent() {
     if (res.success && res.user) {
       setCurrentUser(res.user);
       await loadQueryState(currentQueryId, res.user);
+      await refreshGithubStatus();
+      setMyRepos([]);
     }
     return res;
   };
@@ -283,14 +342,71 @@ function AppContent() {
     if (res.success && res.user) {
       setCurrentUser(res.user);
       await loadQueryState(currentQueryId, res.user);
+      await refreshGithubStatus();
+      setMyRepos([]);
     }
     return res;
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     api.logout();
     setCurrentUser(PRESET_USERS[0]);
-    loadQueryState(currentQueryId, PRESET_USERS[0]);
+    await loadQueryState(currentQueryId, PRESET_USERS[0]);
+    await refreshGithubStatus();
+    setMyRepos([]);
+  };
+
+  const handleLinkGithubWithToken = async (token) => {
+    setGithubBusy(true);
+    const res = await api.linkGithubWithToken(token);
+    setGithubBusy(false);
+    if (res.success) {
+      await refreshGithubStatus();
+      pushQuestLog(`GitHub linked as @${res.login || 'user'} (PAT)`);
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Failed to link token' };
+  };
+
+  const handleLinkGithubOAuth = () => {
+    api.startGithubOAuth();
+  };
+
+  const handleUnlinkGithub = async () => {
+    setGithubBusy(true);
+    const res = await api.unlinkGithub();
+    setGithubBusy(false);
+    if (res.success) {
+      setGithubStatus((prev) => ({
+        linked: false,
+        login: null,
+        avatarUrl: null,
+        configured: true,
+        oauthConfigured: Boolean(prev?.oauthConfigured),
+        patLinking: true
+      }));
+      setMyRepos([]);
+      pushQuestLog('GitHub account unlinked');
+    } else {
+      pushQuestLog(`Unlink failed: ${res.error || 'unknown error'}`);
+    }
+  };
+
+  const handleRefreshMyRepos = async () => {
+    if (!githubStatus.linked) return;
+    setMyReposLoading(true);
+    const res = await api.listGithubRepos();
+    setMyReposLoading(false);
+    if (res.success) {
+      setMyRepos(res.repos || []);
+    } else {
+      setGithubError(res.error || 'Failed to load your repositories');
+    }
+  };
+
+  const handleSelectMyRepo = async (fullName) => {
+    if (!fullName) return false;
+    return handleLoadGithubRepo(fullName);
   };
 
   // --- Query Switch & Create Handlers ---
@@ -428,6 +544,7 @@ function AppContent() {
       setAuditedSymbols([]);
       setTestSuites(initialTestSuites);
       setVerdicts([]);
+      setGithubMeta(workspace.meta || null);
       setLevel(1);
       setUnlockedLevel(1);
       setXp(0);
@@ -439,14 +556,9 @@ function AppContent() {
       setActiveSymbolKey(derived.defaultKey || null);
 
       if (nextRepoDocs.length > 0) {
-        setQuestLogs(prev => [
-          {
-            id: Date.now() + Math.random(),
-            text: `📄 Loaded ${nextRepoDocs.length} repo doc(s) from PR head: ${nextRepoDocs.map(d => d.path).join(', ')}`,
-            timestamp: new Date().toLocaleTimeString()
-          },
-          ...prev
-        ].slice(0, 5));
+        pushQuestLog(
+          `Loaded ${nextRepoDocs.length} repo doc(s) from PR head: ${nextRepoDocs.map(d => d.path).join(', ')}`
+        );
       }
     }
 
@@ -589,6 +701,7 @@ function AppContent() {
   };
 
   const handleAddComment = async (fileId, commentPayload) => {
+    const targetFile = files.find(f => f.id === fileId);
     const enriched = {
       id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       authorId: currentUser.id,
@@ -597,6 +710,9 @@ function AppContent() {
       authorAvatar: currentUser.avatar || '👨‍💻',
       type: commentPayload.type || 'note',
       text: commentPayload.text,
+      path: commentPayload.path || targetFile?.path || null,
+      line: commentPayload.line ?? null,
+      side: commentPayload.side || 'RIGHT',
       timestamp: 'Just now',
       ...commentPayload
     };
@@ -614,8 +730,8 @@ function AppContent() {
       return f;
     }));
 
-    // Post to API client
-    api.addComment(currentQueryId, fileId, enriched);
+    const res = await api.addComment(currentQueryId, fileId, enriched);
+    logGithubSync(res.githubSync, enriched.type === 'flag' ? 'flag' : 'comment');
   };
 
   const handleToggleStandard = (id) => {
@@ -677,13 +793,10 @@ function AppContent() {
       return [...prev, verdictEntry];
     });
 
-    api.submitVerdict(currentQueryId, verdictEntry);
+    const verdictRes = await api.submitVerdict(currentQueryId, verdictEntry);
     handleAddXp(100, `Submitted Final Review Verdict as ${currentUser.name}`, "final-verdict-submitted");
-
-    setQuestLogs(prev => [
-      { id: Date.now(), text: `🏆 Verdict submitted: ${userVerdictType.toUpperCase()} by ${currentUser.name}`, timestamp: new Date().toLocaleTimeString() },
-      ...prev
-    ].slice(0, 5));
+    pushQuestLog(`Verdict submitted: ${userVerdictType.toUpperCase()} by ${currentUser.name}`);
+    logGithubSync(verdictRes.githubSync, 'verdict');
 
     setIsVerdictOpen(false);
   };
@@ -765,6 +878,7 @@ function AppContent() {
         githubPrLoading={githubPrLoading}
         onPrevGithubPr={() => handleToggleGithubPr('prev')}
         onNextGithubPr={() => handleToggleGithubPr('next')}
+        githubStatus={githubStatus}
       />
 
       {/* Active Mission & Transition Banner */}
@@ -1200,11 +1314,18 @@ function AppContent() {
             </div>
 
             {/* Modal Footer */}
-            <div className="bg-[#F9F6F0] border-t border-[#E6E0D5] p-4 flex justify-between items-center">
+            <div className="bg-[#F9F6F0] border-t border-[#E6E0D5] p-4 flex justify-between items-center gap-3">
               <span className="text-xs text-[#6B635A]">
                 Persisted against <strong className="text-[#242220] font-mono">{currentQueryId}</strong>
+                {String(currentQueryId).startsWith('GH-') && (
+                  <span className="block text-[10px] mt-0.5">
+                    {githubStatus.linked
+                      ? `Also syncs to GitHub as @${githubStatus.login}`
+                      : 'Link GitHub in your profile to sync this verdict'}
+                  </span>
+                )}
               </span>
-              <div className="flex gap-2">
+              <div className="flex gap-2 shrink-0">
                 <button
                   onClick={() => setIsVerdictOpen(false)}
                   className="px-4 py-2 bg-white border border-[#E6E0D5] text-xs font-medium rounded-xl hover:bg-[#FFFDF9] cursor-pointer"
@@ -1386,6 +1507,11 @@ function AppContent() {
         onCustomLogin={handleCustomLogin}
         onCustomRegister={handleCustomRegister}
         onLogout={handleLogout}
+        githubStatus={githubStatus}
+        onLinkGithubWithToken={handleLinkGithubWithToken}
+        onLinkGithubOAuth={handleLinkGithubOAuth}
+        onUnlinkGithub={handleUnlinkGithub}
+        githubBusy={githubBusy}
       />
 
       {/* Query Selector Modal */}
@@ -1402,6 +1528,12 @@ function AppContent() {
         githubError={githubError}
         onLoadRepo={handleLoadGithubRepo}
         onSelectGitHubPr={handleSelectGitHubPr}
+        githubLinked={Boolean(githubStatus.linked)}
+        githubLogin={githubStatus.login}
+        myRepos={myRepos}
+        myReposLoading={myReposLoading}
+        onRefreshMyRepos={handleRefreshMyRepos}
+        onSelectMyRepo={handleSelectMyRepo}
       />
 
       {/* Global Informational Side Panel / Drawer */}

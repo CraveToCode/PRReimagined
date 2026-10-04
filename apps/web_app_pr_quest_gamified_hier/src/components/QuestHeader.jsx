@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Award, CheckCircle, RefreshCw, ChevronRight, Info, HelpCircle, GitPullRequest, Database, ChevronLeft, Loader2 } from 'lucide-react';
+import { Shield, Award, CheckCircle, RefreshCw, ChevronRight, Info, HelpCircle, GitPullRequest, Database, ChevronLeft, Loader2, Github } from 'lucide-react';
 
 export default function QuestHeader({ 
   level, 
@@ -23,7 +23,8 @@ export default function QuestHeader({
   githubPullRequests = [],
   githubPrLoading = false,
   onPrevGithubPr,
-  onNextGithubPr
+  onNextGithubPr,
+  githubStatus = null
 }) {
   const levels = [
     { num: 1, name: "Spec & Intent Check", desc: "Verify changes map to JIRA criteria" },
@@ -144,7 +145,7 @@ export default function QuestHeader({
           <button
             onClick={onOpenAuth}
             className="flex items-center gap-2 bg-[#FFFDF9] hover:bg-[#F9F6F0] border border-[#D08A29]/30 hover:border-[#D08A29] px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer shadow-2xs group"
-            title="Click to switch reviewer persona or log in"
+            title="Click to switch reviewer persona, log in, or link GitHub"
           >
             <span className="text-xl group-hover:scale-110 transition-transform">
               {currentUser?.avatar || '👨‍💻'}
@@ -154,8 +155,19 @@ export default function QuestHeader({
                 <span>{currentUser?.name || 'Alex Chen'}</span>
                 <span className="text-[10px] text-[#C35832] font-semibold">⇄</span>
               </div>
-              <div className="text-[10px] text-[#6B635A] truncate max-w-[130px]">
-                {currentUser?.role || 'Staff Reviewer'}
+              <div className="text-[10px] text-[#6B635A] truncate max-w-[130px] flex items-center gap-1">
+                {githubStatus?.linked ? (
+                  <>
+                    {githubStatus.avatarUrl ? (
+                      <img src={githubStatus.avatarUrl} alt="" className="w-3.5 h-3.5 rounded-full" />
+                    ) : (
+                      <Github className="w-3 h-3" />
+                    )}
+                    <span>@{githubStatus.login}</span>
+                  </>
+                ) : (
+                  <span>{currentUser?.role || 'Staff Reviewer'}</span>
+                )}
               </div>
             </div>
           </button>

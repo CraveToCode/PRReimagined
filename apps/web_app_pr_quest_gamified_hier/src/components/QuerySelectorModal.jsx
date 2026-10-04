@@ -25,13 +25,20 @@ export default function QuerySelectorModal({
   githubLoading = false,
   githubError = '',
   onLoadRepo,
-  onSelectGitHubPr
+  onSelectGitHubPr,
+  githubLinked = false,
+  githubLogin = null,
+  myRepos = [],
+  myReposLoading = false,
+  onRefreshMyRepos,
+  onSelectMyRepo
 }) {
   const [newQueryId, setNewQueryId] = useState('');
   const [newQueryTitle, setNewQueryTitle] = useState('');
   const [filterText, setFilterText] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [repoInput, setRepoInput] = useState(githubRepoUrl || '');
+  const [selectedFullName, setSelectedFullName] = useState('');
   const [activeTab, setActiveTab] = useState(
     githubPullRequests.length > 0 ? 'github' : 'local'
   );
@@ -39,9 +46,14 @@ export default function QuerySelectorModal({
   useEffect(() => {
     if (isOpen) {
       setRepoInput(githubRepoUrl || '');
-      setActiveTab(githubPullRequests.length > 0 ? 'github' : 'local');
+      setActiveTab(githubPullRequests.length > 0 || githubLinked ? 'github' : 'local');
+      if (githubLinked && onRefreshMyRepos) {
+        onRefreshMyRepos();
+      }
+      const currentFull = (githubRepoUrl || '').replace(/^https?:\/\/github\.com\//, '');
+      setSelectedFullName(currentFull);
     }
-  }, [isOpen, githubRepoUrl, githubPullRequests.length]);
+  }, [isOpen, githubRepoUrl, githubPullRequests.length, githubLinked]);
 
   if (!isOpen) return null;
 
@@ -92,7 +104,11 @@ export default function QuerySelectorModal({
             </div>
             <div>
               <h3 className="text-base font-bold text-[#242220]">Review Queries & Pull Requests</h3>
-              <p className="text-xs text-[#6B635A]">Load a public GitHub repo or switch local review targets</p>
+              <p className="text-xs text-[#6B635A]">
+                {githubLinked
+                  ? `Linked as @${githubLogin} — pick a repo or paste a URL`
+                  : 'Load a public GitHub repo or switch local review targets'}
+              </p>
             </div>
           </div>
           <button
@@ -103,41 +119,85 @@ export default function QuerySelectorModal({
           </button>
         </div>
 
-        {/* GitHub Repo URL Entry */}
-        <form onSubmit={handleLoadRepo} className="p-4 border-b border-[#E6E0D5] bg-[#FFFDF9] space-y-2">
-          <label className="text-[11px] font-bold uppercase tracking-wider text-[#6B635A] flex items-center gap-1.5">
-            <Github className="w-3.5 h-3.5" />
-            Public repository URL
-          </label>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Link2 className="w-4 h-4 text-[#6B635A] absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={repoInput}
-                onChange={e => setRepoInput(e.target.value)}
-                placeholder="https://github.com/owner/repo or owner/repo"
-                className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-[#E6E0D5] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#C35832] font-mono"
-              />
+        {/* GitHub Repo Entry */}
+        <div className="p-4 border-b border-[#E6E0D5] bg-[#FFFDF9] space-y-2.5">
+          {githubLinked && (
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-[#6B635A] flex items-center gap-1.5">
+                <Github className="w-3.5 h-3.5" />
+                My Repos
+              </label>
+              <div className="flex gap-2">
+                <select
+                  value={selectedFullName}
+                  disabled={myReposLoading || githubLoading}
+                  onChange={async (e) => {
+                    const fullName = e.target.value;
+                    setSelectedFullName(fullName);
+                    if (!fullName || !onSelectMyRepo) return;
+                    setRepoInput(fullName);
+                    const ok = await onSelectMyRepo(fullName);
+                    if (ok) setActiveTab('github');
+                  }}
+                  className="flex-1 text-xs p-2 bg-white border border-[#E6E0D5] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#C35832] font-mono"
+                >
+                  <option value="">
+                    {myReposLoading ? 'Loading your repositories…' : 'Select a repository…'}
+                  </option>
+                  {myRepos.map((r) => (
+                    <option key={r.id || r.fullName} value={r.fullName}>
+                      {r.fullName}{r.private ? ' (private)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={onRefreshMyRepos}
+                  disabled={myReposLoading}
+                  className="px-3 py-2 text-xs font-bold border border-[#E6E0D5] bg-white hover:bg-[#F9F6F0] rounded-xl cursor-pointer disabled:opacity-50"
+                  title="Refresh repo list"
+                >
+                  {myReposLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '↻'}
+                </button>
+              </div>
             </div>
-            <button
-              type="submit"
-              disabled={!repoInput.trim() || githubLoading}
-              className="px-4 py-2 bg-[#242220] hover:bg-black text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 disabled:opacity-50"
-            >
-              {githubLoading ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Loading…</span>
-                </>
-              ) : (
-                <>
-                  <Search className="w-3.5 h-3.5" />
-                  <span>Load Open PRs</span>
-                </>
-              )}
-            </button>
-          </div>
+          )}
+
+          <form onSubmit={handleLoadRepo} className="space-y-2">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-[#6B635A] flex items-center gap-1.5">
+              <Link2 className="w-3.5 h-3.5" />
+              {githubLinked ? 'Or paste any repo URL' : 'Public repository URL'}
+            </label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Github className="w-4 h-4 text-[#6B635A] absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={repoInput}
+                  onChange={e => setRepoInput(e.target.value)}
+                  placeholder="https://github.com/owner/repo or owner/repo"
+                  className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-[#E6E0D5] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#C35832] font-mono"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!repoInput.trim() || githubLoading}
+                className="px-4 py-2 bg-[#242220] hover:bg-black text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+              >
+                {githubLoading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Loading…</span>
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-3.5 h-3.5" />
+                    <span>Load Open PRs</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
           {githubError && (
             <p className="text-[11px] text-[#C35832] bg-[#FFF8F6] border border-[#F7D8D0] rounded-lg px-2.5 py-1.5">
               {githubError}
@@ -149,7 +209,7 @@ export default function QuerySelectorModal({
               <span className="font-mono">{githubRepoUrl.replace('https://github.com/', '')}</span>
             </p>
           )}
-        </form>
+        </div>
 
         {/* Tabs */}
         <div className="px-4 pt-3 flex items-center gap-2 border-b border-[#E6E0D5]">

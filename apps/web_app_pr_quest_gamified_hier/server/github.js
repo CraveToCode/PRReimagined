@@ -65,20 +65,25 @@ export function parseRepoInput(input) {
   }
 }
 
-function githubHeaders() {
+function resolveAccessToken(accessToken) {
+  return accessToken || process.env.GITHUB_TOKEN || null;
+}
+
+function githubHeaders(accessToken) {
   const headers = {
     Accept: 'application/vnd.github+json',
-    'User-Agent': 'PR-Quest-Hackathon'
+    'User-Agent': 'PR-Quest-Hackathon',
+    'X-GitHub-Api-Version': '2022-11-28'
   };
-  const token = process.env.GITHUB_TOKEN;
+  const token = resolveAccessToken(accessToken);
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
   return headers;
 }
 
-async function githubFetch(path) {
-  const res = await fetch(`${GITHUB_API}${path}`, { headers: githubHeaders() });
+async function githubFetch(path, accessToken) {
+  const res = await fetch(`${GITHUB_API}${path}`, { headers: githubHeaders(accessToken) });
   const remaining = res.headers.get('x-ratelimit-remaining');
   if (!res.ok) {
     let message = `GitHub API error (${res.status})`;
@@ -94,8 +99,8 @@ async function githubFetch(path) {
   return res.json();
 }
 
-async function githubFetchOptional(path) {
-  const res = await fetch(`${GITHUB_API}${path}`, { headers: githubHeaders() });
+async function githubFetchOptional(path, accessToken) {
+  const res = await fetch(`${GITHUB_API}${path}`, { headers: githubHeaders(accessToken) });
   if (res.status === 404) return null;
   if (!res.ok) {
     let message = `GitHub API error (${res.status})`;
@@ -110,12 +115,50 @@ async function githubFetchOptional(path) {
   return res.json();
 }
 
+async function githubPost(path, body, accessToken) {
+  const res = await fetch(`${GITHUB_API}${path}`, {
+    method: 'POST',
+    headers: {
+      ...githubHeaders(accessToken),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    let message = `GitHub API error (${res.status})`;
+    try {
+      const data = await res.json();
+      if (data?.message) message = data.message;
+      if (Array.isArray(data?.errors) && data.errors.length) {
+        message += `: ${data.errors.map((e) => e.message || JSON.stringify(e)).join('; ')}`;
+      }
+    } catch (_) {}
+    const err = new Error(message);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
 /**
- * List open pull requests for a public repo (paginates up to 100).
+ * Parse GH-owner/repo#n query ids used by the app for GitHub PRs.
+ * @returns {{ owner: string, repo: string, number: number } | null}
  */
-export async function listOpenPullRequests(owner, repo) {
+export function parseGithubQueryId(queryId) {
+  if (!queryId || typeof queryId !== 'string') return null;
+  const match = queryId.match(/^GH-([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)#(\d+)$/);
+  if (!match) return null;
+  return { owner: match[1], repo: match[2], number: Number(match[3]) };
+}
+
+/**
+ * List open pull requests for a repo (paginates up to 100).
+ * Uses linked-user token when provided; otherwise public/unauthenticated (or GITHUB_TOKEN).
+ */
+export async function listOpenPullRequests(owner, repo, accessToken) {
   const pulls = await githubFetch(
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=open&per_page=100&sort=updated&direction=desc`
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=open&per_page=100&sort=updated&direction=desc`,
+    accessToken
   );
 
   return pulls.map((pr) => ({
@@ -226,10 +269,11 @@ function decodeContentFile(fileJson) {
 /**
  * Fetch first existing candidate for a role at a given commit SHA.
  */
-async function fetchDocForRole(owner, repo, role, candidates, refSha, changedPathSet) {
+async function fetchDocForRole(owner, repo, role, candidates, refSha, changedPathSet, accessToken) {
   for (const path of candidates) {
     const data = await githubFetchOptional(
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(refSha)}`
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(refSha)}`,
+      accessToken
     );
     if (!data) continue;
     const content = decodeContentFile(data);
@@ -248,14 +292,14 @@ async function fetchDocForRole(owner, repo, role, candidates, refSha, changedPat
  * Discover ARCHITECTURE / CONTEXT / PRODUCT docs at PR head.
  * README.md is used only as a secondary architecture fallback.
  */
-export async function fetchRepoDocsAtHead(owner, repo, headSha, changedFiles = []) {
+export async function fetchRepoDocsAtHead(owner, repo, headSha, changedFiles = [], accessToken) {
   const changedPathSet = new Set(
     (changedFiles || []).map((f) => String(f.filename || f.path || '').toLowerCase()).filter(Boolean)
   );
 
   const roles = ['architecture', 'context', 'product'];
   const results = await Promise.all(
-    roles.map((role) => fetchDocForRole(owner, repo, role, DOC_CANDIDATES[role], headSha, changedPathSet))
+    roles.map((role) => fetchDocForRole(owner, repo, role, DOC_CANDIDATES[role], headSha, changedPathSet, accessToken))
   );
 
   const repoDocs = results.filter(Boolean);
@@ -268,7 +312,8 @@ export async function fetchRepoDocsAtHead(owner, repo, headSha, changedFiles = [
       'architecture',
       ['README.md', 'readme.md', 'docs/README.md'],
       headSha,
-      changedPathSet
+      changedPathSet,
+      accessToken
     );
     if (readme) {
       repoDocs.unshift({ ...readme, role: 'architecture', path: readme.path });
@@ -483,17 +528,17 @@ function buildArchitectureText(repoDocs) {
  * Fetch PR metadata + changed files with parsed diffs for the review workspace,
  * plus PR-head repo docs seeded into Level 1 / Level 2.
  */
-export async function fetchPullRequestWorkspace(owner, repo, number) {
+export async function fetchPullRequestWorkspace(owner, repo, number, accessToken) {
   const [pr, files] = await Promise.all([
-    githubFetch(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}`),
-    githubFetch(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}/files?per_page=100`)
+    githubFetch(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}`, accessToken),
+    githubFetch(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}/files?per_page=100`, accessToken)
   ]);
 
   const headSha = pr.head?.sha;
   let repoDocs = [];
   if (headSha) {
     try {
-      repoDocs = await fetchRepoDocsAtHead(owner, repo, headSha, files);
+      repoDocs = await fetchRepoDocsAtHead(owner, repo, headSha, files, accessToken);
     } catch (err) {
       // Non-fatal: PR diffs still load if docs lookup fails (e.g. rate limit)
       console.warn('[github] repo docs fetch failed:', err.message);
@@ -549,5 +594,159 @@ export async function fetchPullRequestWorkspace(owner, repo, number) {
       deletions: pr.deletions,
       changedFiles: pr.changed_files
     }
+  };
+}
+
+/** OAuth authorize URL for browser redirect. */
+export function buildOAuthAuthorizeUrl({ clientId, redirectUri, state, scope = 'read:user repo' }) {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    scope,
+    state
+  });
+  return `https://github.com/login/oauth/authorize?${params.toString()}`;
+}
+
+/** Exchange OAuth code for access token. */
+export async function exchangeOAuthCode({ clientId, clientSecret, code, redirectUri }) {
+  const res = await fetch('https://github.com/login/oauth/access_token', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'User-Agent': 'PR-Quest-Hackathon'
+    },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      redirect_uri: redirectUri
+    })
+  });
+  const data = await res.json();
+  if (!res.ok || data.error || !data.access_token) {
+    const err = new Error(data.error_description || data.error || 'OAuth token exchange failed');
+    err.status = 502;
+    throw err;
+  }
+  return {
+    accessToken: data.access_token,
+    scope: data.scope || '',
+    tokenType: data.token_type || 'bearer'
+  };
+}
+
+/** Authenticated GitHub user for the given token. */
+export async function getAuthenticatedUser(accessToken) {
+  const user = await githubFetch('/user', accessToken);
+  return {
+    githubUserId: String(user.id),
+    login: user.login,
+    avatarUrl: user.avatar_url || null,
+    name: user.name || user.login
+  };
+}
+
+/**
+ * List repos the linked user can access (owner / collaborator / org member).
+ */
+export async function listUserRepos(accessToken, { perPage = 100, maxPages = 3 } = {}) {
+  const repos = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const batch = await githubFetch(
+      `/user/repos?affiliation=owner,collaborator,organization_member&sort=updated&per_page=${perPage}&page=${page}`,
+      accessToken
+    );
+    if (!Array.isArray(batch) || batch.length === 0) break;
+    for (const r of batch) {
+      repos.push({
+        id: r.id,
+        fullName: r.full_name,
+        name: r.name,
+        owner: r.owner?.login || r.full_name?.split('/')[0],
+        private: Boolean(r.private),
+        htmlUrl: r.html_url,
+        description: r.description || '',
+        language: r.language || null,
+        updatedAt: r.updated_at,
+        openIssues: r.open_issues_count ?? null,
+        defaultBranch: r.default_branch || 'main'
+      });
+    }
+    if (batch.length < perPage) break;
+  }
+  return repos;
+}
+
+/**
+ * Create a PR review line comment when path + line are known; otherwise an issue comment.
+ */
+export async function postPullRequestComment({
+  owner,
+  repo,
+  number,
+  body,
+  path,
+  line,
+  side = 'RIGHT',
+  commitId,
+  accessToken
+}) {
+  const text = body.startsWith('[PR Quest]') ? body : `[PR Quest] ${body}`;
+  const hasLine = path && Number.isFinite(Number(line)) && Number(line) > 0 && commitId;
+
+  if (hasLine) {
+    const created = await githubPost(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}/comments`,
+      {
+        body: text,
+        commit_id: commitId,
+        path,
+        line: Number(line),
+        side: side === 'LEFT' ? 'LEFT' : 'RIGHT'
+      },
+      accessToken
+    );
+    return { kind: 'review_comment', id: created.id, htmlUrl: created.html_url };
+  }
+
+  const created = await githubPost(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues/${number}/comments`,
+    { body: text },
+    accessToken
+  );
+  return { kind: 'issue_comment', id: created.id, htmlUrl: created.html_url };
+}
+
+const VERDICT_TO_EVENT = {
+  approved: 'APPROVE',
+  changes_requested: 'REQUEST_CHANGES',
+  comment: 'COMMENT'
+};
+
+/**
+ * Submit a PR review from an in-app verdict.
+ */
+export async function submitPullRequestReview({
+  owner,
+  repo,
+  number,
+  verdict,
+  notes,
+  accessToken
+}) {
+  const event = VERDICT_TO_EVENT[verdict] || 'COMMENT';
+  const body = (notes || '').trim() || `[PR Quest] Review verdict: ${verdict}`;
+  const created = await githubPost(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}/reviews`,
+    { event, body: body.startsWith('[PR Quest]') ? body : `[PR Quest] ${body}` },
+    accessToken
+  );
+  return {
+    id: created.id,
+    htmlUrl: created.html_url,
+    state: created.state,
+    event
   };
 }

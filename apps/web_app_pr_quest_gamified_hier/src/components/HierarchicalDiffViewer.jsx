@@ -56,6 +56,7 @@ export default function HierarchicalDiffViewer({
       authorAvatar: currentUser?.avatar || '👨‍💻',
       type: 'approval',
       text: `Approved by ${currentUser?.name || 'Reviewer'}.`,
+      path: file.path,
       timestamp: 'Just now'
     });
   };
@@ -74,6 +75,7 @@ export default function HierarchicalDiffViewer({
       authorAvatar: currentUser?.avatar || '👨‍💻',
       type: 'flag',
       text: `[${commentData.tag}] ${commentData.text}`,
+      path: flaggingFile.path,
       timestamp: 'Just now'
     });
 
@@ -86,9 +88,11 @@ export default function HierarchicalDiffViewer({
     const text = commentInputs[`${fileId}-${lineNum}`];
     if (!text || !text.trim()) return;
 
+    const file = files.find(f => f.id === fileId);
     onAddComment(fileId, {
       id: Date.now(),
       line: lineNum,
+      path: file?.path || null,
       authorId: currentUser?.id || 'alex_staff',
       authorName: currentUser?.name || 'Reviewer',
       authorRole: currentUser?.role || 'Code Reviewer',
