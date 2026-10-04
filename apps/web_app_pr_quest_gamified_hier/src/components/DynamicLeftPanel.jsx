@@ -29,7 +29,9 @@ export default function DynamicLeftPanel({
   onSelectFileByPath,
   onAddXp,
   onOpenArchModal,
-  isLevelComplete
+  isLevelComplete,
+  auditedSymbols = [],
+  onToggleSymbolAudit
 }) {
   // Level 1: Spec & Intent Check
   if (level === 1) {
@@ -154,24 +156,25 @@ export default function DynamicLeftPanel({
   // Level 3: Blast Radius Impact Matrix & Dependency Tree
   if (level === 3) {
     const symbols = Object.keys(symbolCatalog);
+    const auditedCount = auditedSymbols.length;
 
     return (
       <div className="bg-white border border-[#E6E0D5] rounded-xl p-4 shadow-sm flex flex-col space-y-4">
         {/* Header */}
         <div className="border-b border-[#F1ECE4] pb-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-[#C35832] bg-[#FBEFEF] px-2 py-0.5 rounded border border-[#C35832]/20 flex items-center gap-1">
+            <span className="text-xs font-bold text-[#C35832] bg-[#FBEFEF] px-2 py-0.5 rounded border border-[#C35832]/20 flex items-center gap-1 font-mono">
               <GitBranch className="w-3.5 h-3.5" /> Blast Radius Matrix
             </span>
-            <span className="text-[10px] text-[#6B635A] font-bold">
-              Level 3 Mission
+            <span className="text-xs text-[#4F6D56] font-bold bg-[#F4F8F5] px-2 py-0.5 rounded border border-[#4F6D56]/20">
+              {auditedCount}/{symbols.length} Audited (+25 XP)
             </span>
           </div>
           <h2 className="text-sm font-bold text-[#242220] mt-2 leading-snug">
             Exported Symbol Dependency Tree
           </h2>
           <p className="text-[11px] text-[#6B635A] mt-1">
-            Click any function below to load its definition and compare with original code side-by-side on the right:
+            Audit all symbols below to verify blast radius and unlock Level 4:
           </p>
         </div>
 
@@ -180,6 +183,7 @@ export default function DynamicLeftPanel({
           {symbols.map((symKey) => {
             const sym = symbolCatalog[symKey];
             const isSelected = activeSymbol === symKey;
+            const isAudited = auditedSymbols.includes(symKey);
 
             return (
               <div 
@@ -188,24 +192,46 @@ export default function DynamicLeftPanel({
                 className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
                   isSelected 
                     ? 'bg-[#FFFDF9] border-[#C35832] ring-2 ring-[#C35832]/20 shadow-xs' 
-                    : 'bg-[#F9F6F0]/60 border-[#E6E0D5] hover:bg-white'
+                    : isAudited
+                      ? 'bg-[#F4F8F5] border-[#4F6D56]/30'
+                      : 'bg-[#F9F6F0]/60 border-[#E6E0D5] hover:bg-white'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold text-[#242220] flex items-center gap-1">
-                    <FileCode className="w-3.5 h-3.5 text-[#C35832]" />
-                    {sym.name}()
-                  </span>
-                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-white border border-[#E6E0D5] text-[#6B635A]">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleSymbolAudit && onToggleSymbolAudit(symKey);
+                      }}
+                      className="text-[#C35832] hover:scale-110 transition-transform cursor-pointer"
+                      title={isAudited ? "Mark symbol unverified" : "Audit symbol blast radius (+25 XP)"}
+                    >
+                      {isAudited ? (
+                        <CheckSquare className="w-4 h-4 text-[#4F6D56]" />
+                      ) : (
+                        <Square className="w-4 h-4 text-[#6B635A]" />
+                      )}
+                    </button>
+                    <span className="font-mono text-xs font-bold text-[#242220] flex items-center gap-1">
+                      <FileCode className="w-3.5 h-3.5 text-[#C35832]" />
+                      {sym.name}()
+                    </span>
+                  </div>
+                  <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${
+                    isAudited 
+                      ? 'bg-white text-[#4F6D56] border-[#4F6D56]/30 font-semibold' 
+                      : 'bg-white border-[#E6E0D5] text-[#6B635A]'
+                  }`}>
                     {sym.callers.length} consumers
                   </span>
                 </div>
-                <div className="text-[10px] text-[#6B635A] font-mono mt-1 truncate">
+                <div className="text-[10px] text-[#6B635A] font-mono mt-1 truncate pl-6">
                   {sym.file}
                 </div>
 
                 {/* Consumer list preview */}
-                <div className="mt-2 pt-1.5 border-t border-[#E6E0D5]/40 space-y-1">
+                <div className="mt-2 pt-1.5 border-t border-[#E6E0D5]/40 space-y-1 pl-6">
                   {sym.callers.map((caller, cIdx) => (
                     <div key={cIdx} className="text-[10px] text-[#242220]/80 flex items-center justify-between">
                       <span className="font-mono truncate max-w-[170px]">{caller.file.split('/').pop()}</span>

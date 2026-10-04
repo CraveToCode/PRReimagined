@@ -73,6 +73,14 @@ export default function App() {
   }, [standards]);
 
   const [activeSymbolKey, setActiveSymbolKey] = useState("rotateSessionToken");
+  const [auditedSymbols, setAuditedSymbols] = useState(() => {
+    const saved = localStorage.getItem('pr_quest_audited_symbols');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('pr_quest_audited_symbols', JSON.stringify(auditedSymbols));
+  }, [auditedSymbols]);
 
   const [testSuites, setTestSuites] = useState(() => {
     const saved = localStorage.getItem('pr_quest_tests');
@@ -161,31 +169,46 @@ export default function App() {
     localStorage.setItem('pr_quest_unlocked_level', unlockedLevel);
   }, [unlockedLevel]);
 
-  // Milestone objective calculations
+  // Milestone objective calculations: Left panel items determine level unlocks
+  // Level 1: Left panel Acceptance Criteria checklist
   const completedAcCount = jiraTicket.criteria.filter(ac => ac.completed).length;
   const totalAcCount = jiraTicket.criteria.length;
   const isLevel1Complete = totalAcCount > 0 && completedAcCount === totalAcCount;
 
-  const tier1Files = files.filter(f => f.tier.includes("Tier 1"));
-  const tier1ReviewedCount = tier1Files.filter(f => f.status !== 'pending').length;
-  const isLevel2Complete = tier1Files.length > 0 && tier1ReviewedCount === tier1Files.length;
+  // Level 2: Left panel Architecture Standard Practice checklist
+  const completedStandardsCount = standards.filter(s => s.completed).length;
+  const totalStandardsCount = standards.length;
+  const isLevel2Complete = totalStandardsCount > 0 && completedStandardsCount === totalStandardsCount;
 
-  const tier2Files = files.filter(f => f.tier.includes("Tier 2"));
-  const tier2ReviewedCount = tier2Files.filter(f => f.status !== 'pending').length;
-  const isLevel3Complete = tier2Files.length > 0 && tier2ReviewedCount === tier2Files.length;
+  // Level 3: Left panel Exported Symbol Blast Radius checklist
+  const symbolKeys = Object.keys(initialSymbolCatalog);
+  const completedSymbolsCount = auditedSymbols.length;
+  const totalSymbolsCount = symbolKeys.length;
+  const isLevel3Complete = totalSymbolsCount > 0 && completedSymbolsCount === totalSymbolsCount;
 
-  const tier3Files = files.filter(f => f.tier.includes("Tier 3"));
-  const tier3ReviewedCount = tier3Files.filter(f => f.status !== 'pending').length;
+  // Level 4 (Final Stage): ALL code files must be approved/flagged + verdict submitted
+  const allFilesReviewed = files.length > 0 && files.every(f => f.status !== 'pending');
+  const reviewedCount = files.filter(f => f.status !== 'pending').length;
   const isVerdictSubmitted = awardedActions.includes('final-verdict-submitted');
-  const isLevel4Complete = tier3Files.length > 0 && tier3ReviewedCount === tier3Files.length && isVerdictSubmitted;
+  const isLevel4Complete = allFilesReviewed && isVerdictSubmitted;
 
   // Comprehensive Review Progress calculation across all 4 stages:
   const l1Prog = totalAcCount > 0 ? (completedAcCount / totalAcCount) * 25 : 0;
-  const l2Prog = tier1Files.length > 0 ? (tier1ReviewedCount / tier1Files.length) * 25 : 0;
-  const l3Prog = tier2Files.length > 0 ? (tier2ReviewedCount / tier2Files.length) * 25 : 0;
-  const l4TestProg = tier3Files.length > 0 ? (tier3ReviewedCount / tier3Files.length) * 15 : 0;
+  const l2Prog = totalStandardsCount > 0 ? (completedStandardsCount / totalStandardsCount) * 25 : 0;
+  const l3Prog = totalSymbolsCount > 0 ? (completedSymbolsCount / totalSymbolsCount) * 25 : 0;
+  const l4FileProg = files.length > 0 ? (reviewedCount / files.length) * 15 : 0;
   const l4VerdictProg = isVerdictSubmitted ? 10 : 0;
-  const totalProgressPercent = Math.min(100, Math.round(l1Prog + l2Prog + l3Prog + l4TestProg + l4VerdictProg));
+  const totalProgressPercent = Math.min(100, Math.round(l1Prog + l2Prog + l3Prog + l4FileProg + l4VerdictProg));
+
+  const handleToggleSymbolAudit = (symKey) => {
+    const isAudited = auditedSymbols.includes(symKey);
+    if (isAudited) {
+      setAuditedSymbols(prev => prev.filter(k => k !== symKey));
+    } else {
+      setAuditedSymbols(prev => [...prev, symKey]);
+      handleAddXp(25, `Audited Blast Radius for ${symKey}()`, `audit-symbol-${symKey}`);
+    }
+  };
 
   // Sequential Level Unlocking: unlocking happens at milestone completion, but active tab/level NEVER auto-jumps abruptly
   useEffect(() => {
@@ -271,14 +294,13 @@ export default function App() {
       setActiveSymbolKey("rotateSessionToken");
       setSelectedSpec('ALL');
       setActiveFileId(initialFiles[0]?.id || null);
+      setAuditedSymbols([]);
       setQuestLogs([]);
       localStorage.clear();
     }
   };
 
   const activeFile = files.find(f => f.id === activeFileId);
-  const reviewedCount = files.filter(f => f.status !== 'pending').length;
-
   const approvedFiles = files.filter(f => f.status === 'approved');
   const flaggedFiles = files.filter(f => f.status === 'flagged');
   const pendingFiles = files.filter(f => f.status === 'pending');
@@ -345,10 +367,10 @@ export default function App() {
               </p>
               <p className="text-[11px] text-[#6B635A] mt-0.5">
                 💡 <span className="font-semibold">Milestone Goal:</span> {
-                  level === 1 ? `Verify all Acceptance Criteria (${completedAcCount}/${totalAcCount} checked)` :
-                  level === 2 ? `Audit Tier 1 Core Logic files (${tier1ReviewedCount}/${tier1Files.length} reviewed)` :
-                  level === 3 ? `Verify Downstream Consumers (${tier2ReviewedCount}/${tier2Files.length} reviewed)` :
-                  `Review Tests (${tier3ReviewedCount}/${tier3Files.length}) & Submit Final Verdict`
+                  level === 1 ? `Verify all left-panel Acceptance Criteria (${completedAcCount}/${totalAcCount} checked)` :
+                  level === 2 ? `Audit all left-panel Architecture Standards (${completedStandardsCount}/${totalStandardsCount} audited)` :
+                  level === 3 ? `Audit all left-panel Symbol Blast Radii (${completedSymbolsCount}/${totalSymbolsCount} audited)` :
+                  `Approve all code files (${reviewedCount}/${files.length} reviewed) & Submit Final Verdict`
                 }
               </p>
             </div>
@@ -426,6 +448,8 @@ export default function App() {
           <div className="w-full">
             <TestReviewWorkspace 
               testSuites={testSuites}
+              files={files}
+              onUpdateFileStatus={handleUpdateFileStatus}
               onOpenVerdict={() => setIsVerdictOpen(true)}
               isVerdictSubmitted={isVerdictSubmitted}
               onAddXp={handleAddXp}
@@ -450,6 +474,8 @@ export default function App() {
                 onSelectFileByPath={handleSelectFileByPath}
                 onAddXp={handleAddXp}
                 onOpenArchModal={() => setIsDiagramModalOpen(true)}
+                auditedSymbols={auditedSymbols}
+                onToggleSymbolAudit={handleToggleSymbolAudit}
                 isLevelComplete={
                   level === 1 ? isLevel1Complete :
                   level === 2 ? isLevel2Complete :
@@ -586,17 +612,33 @@ export default function App() {
               </div>
 
               {pendingFiles.length > 0 ? (
-                <div className="bg-[#FFFDF9] border border-[#D08A29]/20 rounded-lg p-3 flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 text-[#D08A29] mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-[#6B635A] leading-relaxed">
-                    You still have <span className="font-bold text-[#242220]">{pendingFiles.length} pending files</span> to review. We recommend reviewing all files before submitting your final verdict.
-                  </p>
+                <div className="bg-[#FFFDF9] border border-[#D08A29]/20 rounded-lg p-3 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-[#D08A29] mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-[#6B635A] leading-relaxed">
+                      Final Stage Requirement: You have <span className="font-bold text-[#242220]">{pendingFiles.length} pending files</span> remaining. In the final stage, all code files must be approved or flagged.
+                    </p>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => {
+                        files.forEach(f => {
+                          if (f.status === 'pending') {
+                            handleUpdateFileStatus(f.id, 'approved');
+                          }
+                        });
+                      }}
+                      className="px-2.5 py-1 bg-[#4F6D56] hover:bg-[#3D5442] text-white text-[11px] font-bold rounded transition-colors cursor-pointer"
+                    >
+                      Approve All Remaining ({pendingFiles.length})
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="bg-[#F4F8F5] border border-[#4F6D56]/20 rounded-lg p-3 flex items-start gap-2">
                   <CheckCircle className="w-4 h-4 text-[#4F6D56] mt-0.5 flex-shrink-0" />
                   <p className="text-xs text-[#6B635A] leading-relaxed">
-                    Excellent! All files have been reviewed. You are ready to submit your final verdict.
+                    Excellent! All {files.length} code files have been approved across review stages. You are ready to submit your final verdict.
                   </p>
                 </div>
               )}
@@ -623,6 +665,15 @@ export default function App() {
               </button>
               <button
                 onClick={() => {
+                  if (pendingFiles.length > 0) {
+                    if (window.confirm(`There are still ${pendingFiles.length} pending code file(s). Would you like to approve all remaining files and submit your verdict?`)) {
+                      files.forEach(f => {
+                        if (f.status === 'pending') handleUpdateFileStatus(f.id, 'approved');
+                      });
+                    } else {
+                      return;
+                    }
+                  }
                   const awarded = handleAddXp(100, "Submitted Final Review Verdict", "final-verdict-submitted");
                   if (awarded) {
                     alert(`🎉 Review submitted successfully! You earned a bonus +100 XP!`);
@@ -631,7 +682,7 @@ export default function App() {
                   }
                   setIsVerdictOpen(false);
                 }}
-                className="px-4 py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-sm transition-colors"
+                className="px-4 py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-sm transition-colors cursor-pointer"
               >
                 {awardedActions.includes("final-verdict-submitted") ? "Submit Verdict (Recorded)" : "Submit Verdict (+100 XP)"}
               </button>
@@ -720,7 +771,7 @@ export default function App() {
                     {isLevel2Complete && <span className="text-[10px] bg-[#4F6D56] text-white px-1.5 py-0.2 rounded font-bold">Done ✓</span>}
                   </div>
                   <div className="text-[11px] text-[#6B635A] mt-0.5">
-                    {tier1ReviewedCount}/{tier1Files.length} Tier 1 files reviewed • {standards.filter(s => s.completed).length}/{standards.length} Standards audited
+                    {completedStandardsCount}/{totalStandardsCount} Left-panel Standards audited (Unlocks L3)
                   </div>
                 </div>
                 <button
@@ -748,7 +799,7 @@ export default function App() {
                     {isLevel3Complete && <span className="text-[10px] bg-[#4F6D56] text-white px-1.5 py-0.2 rounded font-bold">Done ✓</span>}
                   </div>
                   <div className="text-[11px] text-[#6B635A] mt-0.5">
-                    {tier2ReviewedCount}/{tier2Files.length} Downstream consumer files verified
+                    {completedSymbolsCount}/{totalSymbolsCount} Left-panel Symbols audited (Unlocks L4)
                   </div>
                 </div>
                 <button
@@ -776,7 +827,7 @@ export default function App() {
                     {isLevel4Complete && <span className="text-[10px] bg-[#4F6D56] text-white px-1.5 py-0.2 rounded font-bold">Done ✓</span>}
                   </div>
                   <div className="text-[11px] text-[#6B635A] mt-0.5">
-                    {tier3ReviewedCount}/{tier3Files.length} Tests verified • Verdict: {isVerdictSubmitted ? "Submitted ✓" : "Pending"}
+                    {reviewedCount}/{files.length} Code Files approved • Verdict: {isVerdictSubmitted ? "Submitted ✓" : "Pending"}
                   </div>
                 </div>
                 <button

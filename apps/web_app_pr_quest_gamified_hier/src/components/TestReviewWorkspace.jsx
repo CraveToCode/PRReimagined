@@ -18,6 +18,8 @@ import {
 
 export default function TestReviewWorkspace({
   testSuites,
+  files = [],
+  onUpdateFileStatus,
   onOpenVerdict,
   isVerdictSubmitted,
   onAddXp
@@ -356,6 +358,112 @@ export default function TestReviewWorkspace({
             </div>
           </div>
         )}
+      </div>
+
+      {/* Stage 4 Final Code Files Sign-Off Card */}
+      <div className="bg-white border border-[#E6E0D5] rounded-2xl p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-[#F1ECE4]">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-[#C35832] uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                <span>📋</span> Final Stage Code Files Approval
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                files.every(f => f.status !== 'pending')
+                  ? 'bg-[#F4F8F5] text-[#4F6D56] border-[#4F6D56]/30'
+                  : 'bg-[#FFFDF9] text-[#D08A29] border-[#D08A29]/30'
+              }`}>
+                {files.filter(f => f.status !== 'pending').length}/{files.length} Code Files Reviewed
+              </span>
+            </div>
+            <p className="text-xs text-[#6B635A] mt-1">
+              Code approvals from previous levels persist here. Review and approve all remaining files before final sign-off:
+            </p>
+          </div>
+
+          {files.some(f => f.status === 'pending') && (
+            <button
+              onClick={() => {
+                files.forEach(f => {
+                  if (f.status === 'pending') {
+                    onUpdateFileStatus && onUpdateFileStatus(f.id, 'approved');
+                  }
+                });
+              }}
+              className="px-3 py-1.5 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5 self-start sm:self-center"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Approve All Remaining Files</span>
+            </button>
+          )}
+        </div>
+
+        {/* File List Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {files.map((file) => {
+            const isApproved = file.status === 'approved';
+            const isFlagged = file.status === 'flagged';
+            const isPending = file.status === 'pending';
+
+            return (
+              <div 
+                key={file.id}
+                className={`p-3 rounded-xl border transition-all flex flex-col justify-between space-y-2 ${
+                  isApproved 
+                    ? 'bg-[#F4F8F5]/60 border-[#4F6D56]/30' 
+                    : isFlagged
+                      ? 'bg-[#FBEFEF]/60 border-[#C35832]/30'
+                      : 'bg-[#FFFDF9] border-[#E6E0D5]'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-mono text-xs font-bold text-[#242220] truncate">
+                      {file.path.split('/').pop()}
+                    </span>
+                    <span className="text-[9px] font-mono bg-[#F1ECE4] text-[#6B635A] px-1.5 py-0.5 rounded font-semibold">
+                      {file.tier.split(':')[0]}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-[#6B635A] font-mono truncate mt-0.5">
+                    {file.path}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 border-t border-current/10">
+                  <span className={`text-[10px] font-bold capitalize ${
+                    isApproved ? 'text-[#4F6D56]' : isFlagged ? 'text-[#C35832]' : 'text-[#6B635A]'
+                  }`}>
+                    {isApproved ? '✓ Approved' : isFlagged ? '⚠️ Flagged' : '○ Pending Review'}
+                  </span>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => onUpdateFileStatus && onUpdateFileStatus(file.id, 'approved')}
+                      className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors cursor-pointer ${
+                        isApproved
+                          ? 'bg-[#4F6D56] text-white'
+                          : 'bg-[#F4F8F5] text-[#4F6D56] hover:bg-[#4F6D56] hover:text-white border border-[#4F6D56]/30'
+                      }`}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => onUpdateFileStatus && onUpdateFileStatus(file.id, 'flagged')}
+                      className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors cursor-pointer ${
+                        isFlagged
+                          ? 'bg-[#C35832] text-white'
+                          : 'bg-[#FBEFEF] text-[#C35832] hover:bg-[#C35832] hover:text-white border border-[#C35832]/30'
+                      }`}
+                    >
+                      Flag
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Roomy Bottom Final Review Milestone Card */}

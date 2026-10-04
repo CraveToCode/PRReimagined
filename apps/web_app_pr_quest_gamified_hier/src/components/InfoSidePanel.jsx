@@ -165,7 +165,7 @@ export default function InfoSidePanel({ isOpen, onClose }) {
                   <span className="text-[10px] text-[#C35832] font-semibold">Stage 1/4</span>
                 </div>
                 <p className="text-[11px] text-[#6B635A] mt-1 leading-relaxed">
-                  Map file diffs against JIRA Acceptance Criteria. Check off verified criteria or click filter pills to isolate related hunks.
+                  Verify PR changes against JIRA Acceptance Criteria. <strong>Check off all left-panel criteria to unlock Level 2.</strong> Code file approvals are optional and persist across levels.
                 </p>
               </div>
 
@@ -175,7 +175,7 @@ export default function InfoSidePanel({ isOpen, onClose }) {
                   <span className="text-[10px] text-[#C35832] font-semibold">Stage 2/4</span>
                 </div>
                 <p className="text-[11px] text-[#6B635A] mt-1 leading-relaxed">
-                  Open the Excalidraw sketch modal to inspect net visual component diffs (+ NEW, ~ MOD, - DEL) and audit checklist items against standard practices.
+                  Inspect the Excalidraw architecture diff modal (+ NEW, ~ MOD, - DEL). <strong>Audit all left-panel standard practices to unlock Level 3.</strong>
                 </p>
               </div>
 
@@ -185,17 +185,17 @@ export default function InfoSidePanel({ isOpen, onClose }) {
                   <span className="text-[10px] text-[#C35832] font-semibold">Stage 3/4</span>
                 </div>
                 <p className="text-[11px] text-[#6B635A] mt-1 leading-relaxed">
-                  Click function signatures in the diff to inspect side-by-side original vs. modified code in the floating inspector and audit consumer dependencies.
+                  Click function signatures in the diff to inspect side-by-side original vs. modified code. <strong>Audit all left-panel symbols to unlock Level 4.</strong>
                 </p>
               </div>
 
               <div className="p-2.5 rounded-lg border border-[#E6E0D5] bg-[#FFFDF9]">
                 <div className="font-bold text-[#242220] flex items-center justify-between">
-                  <span>Level 4: Test Matrix & Final Verdict</span>
+                  <span>Level 4: Tests & Final Verdict</span>
                   <span className="text-[10px] text-[#4F6D56] font-semibold">Stage 4/4</span>
                 </div>
                 <p className="text-[11px] text-[#6B635A] mt-1 leading-relaxed">
-                  Verify unit tests side-by-side against modified source files, then submit your final review verdict (Approve, Request Changes, or Flag).
+                  <strong>The Final Stage:</strong> Review unit test assertions and ensure all code files have been approved or flagged before casting your final review verdict.
                 </p>
               </div>
             </div>
